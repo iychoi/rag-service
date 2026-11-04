@@ -60,9 +60,9 @@ services:
       MINERU_URL: http://mineru:8000
       MINERU_TIER: basic             # default when a request has no tier (must not exceed the mineru server's tier)
       MINERU_CONCURRENCY: "1"
-      # LiteLLM proxy (OpenAI-compatible) used by /query; callers send the key in X-Model-API-Key
+      # LiteLLM proxy (OpenAI-compatible) for embeddings and /query. Callers send their key in
+      # X-Model-API-Key and choose model names per dataset (embedding) and per request (/query).
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-}
-      LLM_MODEL: ${LLM_MODEL:-claude-sonnet-5-5}
       DATA_DIR: /data
     ports:
       - "8000:8000"

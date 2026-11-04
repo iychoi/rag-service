@@ -1,6 +1,7 @@
 """Integration test against a real LiteLLM proxy.
 
-Run: LITELLM_BASE_URL=https://.../v1 LITELLM_API_KEY=sk-... [LITELLM_EMBED_MODEL=titan-embed-v2] \
+Run: LITELLM_BASE_URL=https://.../v1 LITELLM_API_KEY=sk-... [LITELLM_CHAT_MODEL=claude-sonnet-5-5] \
+     [LITELLM_EMBED_MODEL=titan-embed-v2] \
      pytest -m integration tests/test_integration_llm.py -s
 Skipped when either variable is missing. Costs a few hundred tokens per run.
 """
@@ -16,7 +17,7 @@ pytestmark = pytest.mark.integration
 
 BASE_URL = os.environ.get("LITELLM_BASE_URL")
 API_KEY = os.environ.get("LITELLM_API_KEY")
-MODEL = os.environ.get("LLM_MODEL", "claude-sonnet-5-5")
+MODEL = os.environ.get("LITELLM_CHAT_MODEL", "claude-sonnet-5-5")
 
 
 @pytest.mark.skipif(not (BASE_URL and API_KEY), reason="LITELLM_BASE_URL / LITELLM_API_KEY not set")

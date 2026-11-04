@@ -83,8 +83,8 @@ async def search(
     summary="Ask a question (retrieval + LLM answer)",
     description="Retrieves the most relevant chunks like /search, then asks the LLM (via LiteLLM) to "
     "answer only from them, citing sources as [n]. `X-Model-API-Key` is always required because the "
-    "LLM call needs it. Pick the answering model with `model` (any LiteLLM model name; default "
-    "`claude-sonnet-5-5`). An unknown model returns LiteLLM's error as 502 upstream_error. If nothing "
+    "LLM call needs it. `model` (required) is any LiteLLM model name and is passed as-is; an unknown "
+    "model returns LiteLLM's error as 502 upstream_error. If nothing "
     "is retrieved, the LLM is not called and `answer` is null.\n\n"
     "With `\"stream\": true` the response is `text/event-stream` (Server-Sent Events): `sources` "
     "(QueryStreamSources), then `delta` events (QueryStreamDelta) with answer text, then `done` "
@@ -118,20 +118,25 @@ async def query(
         QueryRequest,
         Body(
             openapi_examples={
-                "default_model": {
-                    "summary": "Use the server's default model",
+                "sonnet": {
+                    "summary": "Answer with Claude Sonnet",
                     "value": {
                         "query": "How can the agreement be terminated?",
+                        "model": "claude-sonnet-5-5",
                         "top_k": 5,
                         "filters": {"metadata": {"year": 2025}},
                     },
                 },
                 "stream": {
                     "summary": "Stream the answer (Server-Sent Events)",
-                    "value": {"query": "How can the agreement be terminated?", "stream": True},
+                    "value": {
+                        "query": "How can the agreement be terminated?",
+                        "model": "claude-sonnet-5-5",
+                        "stream": True,
+                    },
                 },
-                "choose_model": {
-                    "summary": "Choose the model (faster, cheaper Haiku)",
+                "haiku": {
+                    "summary": "Faster, cheaper model with a shorter answer",
                     "value": {
                         "query": "계약 해지 조건은?",
                         "model": "claude-haiku-5-5",
@@ -149,7 +154,7 @@ async def query(
     settings = state.settings
     if not settings.litellm_base_url:
         raise APIError(503, "litellm_not_configured", "LITELLM_BASE_URL is not configured")
-    model = body.model or settings.llm_model  # passed to LiteLLM as-is; its errors are returned
+    model = body.model  # passed to LiteLLM as-is; its errors are returned
     validate_retrieval_request(state, body.top_k, body.filters)
     if not api_key:
         raise APIError(400, "missing_model_api_key", "X-Model-API-Key header is required")

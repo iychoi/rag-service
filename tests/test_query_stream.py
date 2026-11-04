@@ -5,7 +5,7 @@ import json
 import httpx
 import respx
 
-from tests.test_query import CHAT_URL, KEY, indexed_dataset
+from tests.test_query import CHAT_URL, KEY, MODEL, indexed_dataset
 
 HEADERS = {"X-Model-API-Key": KEY}
 
@@ -55,7 +55,7 @@ async def test_stream_events(client: httpx.AsyncClient, dataset: dict) -> None:
         r = await client.post(
             f"/datasets/{ds_id}/query",
             headers=HEADERS,
-            json={"query": "계약 해지 조건은?", "top_k": 3, "stream": True},
+            json={"query": "계약 해지 조건은?", "model": MODEL, "top_k": 3, "stream": True},
         )
     assert r.status_code == 200, r.text
     assert r.headers["content-type"].startswith("text/event-stream")
@@ -91,7 +91,7 @@ async def test_stream_upstream_error_before_start_is_json(
     with respx.mock() as router:
         router.post(CHAT_URL).respond(401, json={"error": {"message": f"bad key {KEY}"}})
         r = await client.post(
-            f"/datasets/{ds_id}/query", headers=HEADERS, json={"query": "해지", "stream": True}
+            f"/datasets/{ds_id}/query", headers=HEADERS, json={"query": "해지", "model": MODEL, "stream": True}
         )
     assert r.status_code == 502
     assert r.headers["content-type"].startswith("application/json")
@@ -104,7 +104,7 @@ async def test_stream_error_mid_stream_is_an_event(client: httpx.AsyncClient, da
     with respx.mock() as router:
         mock_stream(router, openai_stream(["first part ", "second part"], error_after=1))
         r = await client.post(
-            f"/datasets/{ds_id}/query", headers=HEADERS, json={"query": "해지", "stream": True}
+            f"/datasets/{ds_id}/query", headers=HEADERS, json={"query": "해지", "model": MODEL, "stream": True}
         )
     assert r.status_code == 200
     events = parse_sse(r.text)
@@ -119,7 +119,7 @@ async def test_stream_without_sources_skips_llm(client: httpx.AsyncClient, datas
     with respx.mock(assert_all_called=False) as router:
         route = mock_stream(router, openai_stream(["never"]))
         r = await client.post(
-            f"/datasets/{dataset['id']}/query", headers=HEADERS, json={"query": "x", "stream": True}
+            f"/datasets/{dataset['id']}/query", headers=HEADERS, json={"query": "x", "model": MODEL, "stream": True}
         )
     assert r.status_code == 200 and not route.called
     assert parse_sse(r.text) == [
@@ -130,6 +130,6 @@ async def test_stream_without_sources_skips_llm(client: httpx.AsyncClient, datas
 
 async def test_stream_validation_errors_are_json(client: httpx.AsyncClient, dataset: dict) -> None:
     r = await client.post(
-        f"/datasets/{dataset['id']}/query", json={"query": "x", "stream": True}
+        f"/datasets/{dataset['id']}/query", json={"query": "x", "model": MODEL, "stream": True}
     )
     assert r.status_code == 400 and r.json()["error"]["code"] == "missing_model_api_key"

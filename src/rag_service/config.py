@@ -34,7 +34,6 @@ class Settings(BaseSettings):
     litellm_base_url: str | None = None
     litellm_max_retries: int = 2
     embedding_timeout_s: float = 60.0
-    llm_model: str = "claude-sonnet-5-5"
     llm_timeout_s: float = 120.0
     llm_max_output_tokens: int = 1024
     llm_context_window: int = 200_000

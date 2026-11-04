@@ -11,6 +11,7 @@ from rag_service.state import AppState
 from tests.conftest import FIXTURES, LITELLM_TEST_URL, wait_for_job
 
 KEY = "sk-test-key-123456"
+MODEL = "claude-sonnet-5-5"
 CHAT_URL = f"{LITELLM_TEST_URL}/chat/completions"
 
 
@@ -77,7 +78,8 @@ async def test_query_answers_with_citations(client: httpx.AsyncClient, dataset: 
         r = await client.post(
             f"/datasets/{ds_id}/query",
             headers={"X-Model-API-Key": KEY},
-            json={"query": "계약 해지 조건은?", "top_k": 3, "filters": {"metadata": {"year": 2025}}},
+            json={"query": "계약 해지 조건은?", "model": MODEL, "top_k": 3,
+                  "filters": {"metadata": {"year": 2025}}},
         )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -126,15 +128,24 @@ async def test_query_model_selection(client: httpx.AsyncClient, dataset: dict) -
 
 
 async def test_query_requires_key(client: httpx.AsyncClient, dataset: dict) -> None:
-    r = await client.post(f"/datasets/{dataset['id']}/query", json={"query": "해지"})
+    r = await client.post(f"/datasets/{dataset['id']}/query", json={"query": "해지", "model": MODEL})
     assert r.status_code == 400 and r.json()["error"]["code"] == "missing_model_api_key"
+
+
+async def test_query_requires_model(client: httpx.AsyncClient, dataset: dict) -> None:
+    r = await client.post(
+        f"/datasets/{dataset['id']}/query", headers={"X-Model-API-Key": KEY}, json={"query": "해지"}
+    )
+    assert r.status_code == 422 and r.json()["error"]["code"] == "validation_error"
+    assert "model" in r.json()["error"]["message"]
 
 
 async def test_query_without_sources_skips_llm(client: httpx.AsyncClient, dataset: dict) -> None:
     with respx.mock(assert_all_called=False) as router:
         route = router.post(CHAT_URL).respond(json=chat_completion("should not be called"))
         r = await client.post(
-            f"/datasets/{dataset['id']}/query", headers={"X-Model-API-Key": KEY}, json={"query": "x"}
+            f"/datasets/{dataset['id']}/query", headers={"X-Model-API-Key": KEY},
+            json={"query": "x", "model": MODEL},
         )
     assert r.status_code == 200
     assert r.json() == {"query": "x", "answer": None, "model": None, "citations": [],
@@ -151,7 +162,7 @@ async def test_query_upstream_errors(client: httpx.AsyncClient, dataset: dict) -
         router.post(CHAT_URL).respond(
             401, json={"error": {"message": f"Invalid proxy server token passed. key={KEY}"}}
         )
-        r = await client.post(url, headers=headers, json={"query": "해지"})
+        r = await client.post(url, headers=headers, json={"query": "해지", "model": MODEL})
     assert r.status_code == 502 and r.json()["error"]["code"] == "upstream_auth_failed"
     assert KEY not in r.text
 
@@ -159,18 +170,18 @@ async def test_query_upstream_errors(client: httpx.AsyncClient, dataset: dict) -
         router.post(CHAT_URL).respond(
             400, json={"error": {"message": f"Invalid model name passed in model=x, key {KEY}"}}
         )
-        r = await client.post(url, headers=headers, json={"query": "해지"})
+        r = await client.post(url, headers=headers, json={"query": "해지", "model": MODEL})
     assert r.status_code == 502 and r.json()["error"]["code"] == "upstream_error"
     assert "HTTP 400" in r.json()["error"]["message"] and KEY not in r.text
 
     with respx.mock() as router:
         router.post(CHAT_URL).mock(side_effect=httpx.ConnectError("refused"))
-        r = await client.post(url, headers=headers, json={"query": "해지"})
+        r = await client.post(url, headers=headers, json={"query": "해지", "model": MODEL})
     assert r.status_code == 502 and r.json()["error"]["code"] == "upstream_unreachable"
 
     with respx.mock() as router:
         router.post(CHAT_URL).mock(side_effect=httpx.ReadTimeout("slow"))
-        r = await client.post(url, headers=headers, json={"query": "해지"})
+        r = await client.post(url, headers=headers, json={"query": "해지", "model": MODEL})
     assert r.status_code == 504 and r.json()["error"]["code"] == "upstream_timeout"
 
 
@@ -179,7 +190,8 @@ async def test_query_not_configured(client: httpx.AsyncClient, dataset: dict, st
     state.settings.litellm_base_url = None
     try:
         r = await client.post(
-            f"/datasets/{dataset['id']}/query", headers={"X-Model-API-Key": KEY}, json={"query": "x"}
+            f"/datasets/{dataset['id']}/query", headers={"X-Model-API-Key": KEY},
+            json={"query": "x", "model": MODEL},
         )
     finally:
         state.settings.litellm_base_url = original

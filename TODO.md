@@ -32,7 +32,7 @@ Current state: dataset/document management, indexing jobs (Docling and MinerU on
 
 - [ ] **Cohere Embed v4 vs. Titan V2**: `input_type` per dataset is implemented (sent as `extra_body`); compare Korean retrieval quality and decide the default model.
 - [x] **`POST /v1/datasets/{dataset_id}/query`**: retrieval + LLM answer with `[n]` citations (`services/answering.py`, `providers/llms.py`). Mocked-LiteLLM tests only.
-  - Settings: `LITELLM_BASE_URL`, `LLM_MODEL=claude-sonnet-5-5`, `LLM_TIMEOUT_S`, `LLM_MAX_OUTPUT_TOKENS`. Model names (request `model`) are passed to LiteLLM as-is; model access and cost control belong to LiteLLM key permissions.
+  - Settings: `LITELLM_BASE_URL`, `LLM_TIMEOUT_S`, `LLM_MAX_OUTPUT_TOKENS`. The answering model is required in each request (`model`, no server default) and passed to LiteLLM as-is; model access and cost control belong to LiteLLM key permissions.
   - Models currently in LiteLLM and their price per 1M tokens (input/output): `claude-sonnet-5-5` $2.20/$11.00, `claude-haiku-5-5` $0.11/$0.55, `claude-opus-5-5` $4.40/$22.00 (too costly as default).
 - [ ] **Verify `/query` against the real LiteLLM** (needs the LiteLLM base URL and a key): check the answer language, citation format, and token usage reporting with `claude-sonnet-5-5`.
 - [x] **`/query` streaming**: `"stream": true` returns Server-Sent Events (`sources`, `delta`, `done` / `error`). Verified incremental delivery through uvicorn with a slow mock LiteLLM; not yet against the real LiteLLM.

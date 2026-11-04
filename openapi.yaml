@@ -1493,9 +1493,9 @@ paths:
       summary: Ask a question (retrieval + LLM answer)
       description: 'Retrieves the most relevant chunks like /search, then asks the LLM (via LiteLLM) to
         answer only from them, citing sources as [n]. `X-Model-API-Key` is always required because the
-        LLM call needs it. Pick the answering model with `model` (any LiteLLM model name; default `claude-sonnet-5-5`).
-        An unknown model returns LiteLLM''s error as 502 upstream_error. If nothing is retrieved, the
-        LLM is not called and `answer` is null.
+        LLM call needs it. `model` (required) is any LiteLLM model name and is passed as-is; an unknown
+        model returns LiteLLM''s error as 502 upstream_error. If nothing is retrieved, the LLM is not
+        called and `answer` is null.
 
 
         With `"stream": true` the response is `text/event-stream` (Server-Sent Events): `sources` (QueryStreamSources),
@@ -1529,10 +1529,11 @@ paths:
             schema:
               $ref: '#/components/schemas/QueryRequest'
             examples:
-              default_model:
-                summary: Use the server's default model
+              sonnet:
+                summary: Answer with Claude Sonnet
                 value:
                   query: How can the agreement be terminated?
+                  model: claude-sonnet-5-5
                   top_k: 5
                   filters:
                     metadata:
@@ -1541,9 +1542,10 @@ paths:
                 summary: Stream the answer (Server-Sent Events)
                 value:
                   query: How can the agreement be terminated?
+                  model: claude-sonnet-5-5
                   stream: true
-              choose_model:
-                summary: Choose the model (faster, cheaper Haiku)
+              haiku:
+                summary: Faster, cheaper model with a shorter answer
                 value:
                   query: 계약 해지 조건은?
                   model: claude-haiku-5-5
@@ -2474,11 +2476,11 @@ components:
           - $ref: '#/components/schemas/SearchFilters'
         model:
           type: string
+          maxLength: 255
+          minLength: 1
           title: Model
-          description: LiteLLM model that writes the answer, passed to LiteLLM as-is. Omit to use the
-            server default (LLM_MODEL, default `claude-sonnet-5-5`). A model LiteLLM does not know returns
-            its error as 502 upstream_error.
-          nullable: true
+          description: LiteLLM model that writes the answer, passed to LiteLLM as-is (no server default).
+            A model LiteLLM does not know returns its error as 502 upstream_error.
           example: claude-sonnet-5-5
         max_output_tokens:
           type: integer
@@ -2497,6 +2499,7 @@ components:
       type: object
       required:
       - query
+      - model
       title: QueryRequest
       example:
         filters:

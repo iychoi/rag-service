@@ -480,11 +480,11 @@ class QueryRequest(BaseModel):
         default=5, ge=1, description="Chunks retrieved as sources; at most MAX_TOP_K (default 50)"
     )
     filters: SearchFilters | None = None
-    model: str | None = Field(
-        default=None,
-        description="LiteLLM model that writes the answer, passed to LiteLLM as-is. Omit to use the "
-        "server default (LLM_MODEL, default `claude-sonnet-5-5`). A model LiteLLM does not know "
-        "returns its error as 502 upstream_error.",
+    model: str = Field(
+        min_length=1,
+        max_length=255,
+        description="LiteLLM model that writes the answer, passed to LiteLLM as-is (no server default). "
+        "A model LiteLLM does not know returns its error as 502 upstream_error.",
         examples=["claude-sonnet-5-5", "claude-haiku-5-5"],
     )
     max_output_tokens: int | None = Field(

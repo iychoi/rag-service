@@ -944,7 +944,7 @@ Request body:
 | `query` | string | yes | | 1–8000 characters. |
 | `top_k` | integer | no | `5` | Number of chunks given to the LLM as sources; 1 to `MAX_TOP_K`. More sources mean more context but a larger (costlier) prompt. |
 | `filters` | object | no | | Same as [search filters](#search-a-dataset) (`document_ids`, `metadata`). |
-| `model` | string | no | `LLM_MODEL` (`claude-sonnet-5-5`) | Any model name registered in LiteLLM, passed as-is (e.g. `claude-haiku-5-5`). An unknown model returns LiteLLM's error as `502 upstream_error`. |
+| `model` | string | yes | | LiteLLM model that writes the answer, e.g. `claude-sonnet-5-5` or `claude-haiku-5-5`. Passed as-is; there is no server default. An unknown model returns LiteLLM's error as `502 upstream_error`. |
 | `max_output_tokens` | integer | no | `LLM_MAX_OUTPUT_TOKENS` (1024) | 1–8192. |
 | `stream` | boolean | no | `false` | Stream the answer as Server-Sent Events. See [Streaming](#streaming-the-answer). |
 
@@ -954,6 +954,7 @@ curl -s -X POST $B/datasets/52967db904d44a09b33f88b3c9f64a6a/query \
   -H "X-Model-API-Key: $KEY" \
   -d '{
     "query": "How can the agreement be terminated?",
+    "model": "claude-sonnet-5-5",
     "top_k": 5,
     "filters": {"metadata": {"year": 2025}}
   }'
@@ -995,7 +996,7 @@ curl -s -X POST $B/datasets/52967db904d44a09b33f88b3c9f64a6a/query \
 }
 ```
 
-Use a faster, cheaper model for a single request:
+A faster, cheaper model with a shorter answer:
 
 ```bash
 curl -s -X POST $B/datasets/$DS/query -H 'content-type: application/json' -H "X-Model-API-Key: $KEY" \
@@ -1044,7 +1045,7 @@ Errors that happen **before** streaming starts — validation, missing key, retr
 ```bash
 curl -sN -X POST $B/datasets/$DS/query \
   -H 'content-type: application/json' -H "X-Model-API-Key: $KEY" \
-  -d '{"query": "How can the agreement be terminated?", "stream": true}'
+  -d '{"query": "How can the agreement be terminated?", "model": "claude-sonnet-5-5", "stream": true}'
 ```
 
 ```
@@ -1067,7 +1068,7 @@ Consuming the stream (browsers' `EventSource` only supports GET, so use `fetch`)
 const res = await fetch(`${B}/datasets/${ds}/query`, {
   method: "POST",
   headers: {"content-type": "application/json", "X-Model-API-Key": key},
-  body: JSON.stringify({query, stream: true}),
+  body: JSON.stringify({query, model: "claude-sonnet-5-5", stream: true}),
 });
 if (!res.ok) throw (await res.json()).error;           // errors before streaming are JSON
 const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -1093,7 +1094,7 @@ Python (`httpx`):
 
 ```python
 with httpx.stream("POST", f"{B}/datasets/{ds}/query", headers={"X-Model-API-Key": key},
-                  json={"query": q, "stream": True}, timeout=None) as r:
+                  json={"query": q, "model": "claude-sonnet-5-5", "stream": True}, timeout=None) as r:
     r.raise_for_status()
     event = None
     for line in r.iter_lines():
@@ -1284,7 +1285,7 @@ curl -s -X POST $B/datasets/$DS/search -H "$J" -H "$K" \
 
 # 8. Ask a question (answer with citations)
 curl -s -X POST $B/datasets/$DS/query -H "$J" -H "$K" \
-  -d '{"query": "How can the agreement be terminated?"}' | jq '{answer, citations, sources: [.sources[] | {id, filename, page}]}'
+  -d '{"query": "How can the agreement be terminated?", "model": "claude-sonnet-5-5"}' | jq '{answer, citations, sources: [.sources[] | {id, filename, page}]}'
 
 # 9. Clean up
 curl -s -X DELETE $B/datasets/$DS
