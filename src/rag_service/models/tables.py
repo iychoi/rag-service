@@ -55,10 +55,12 @@ class Dataset(SQLModel, table=True):
     external_ref: str | None = Field(default=None, max_length=255, unique=True)
     description: str | None = None
 
-    embedding_model_id: str = Field(max_length=128)
     embedding_provider: str = Field(max_length=64)
     embedding_model: str = Field(max_length=255)
     embedding_dim: int
+    embedding_options: dict[str, Any] = Field(
+        default_factory=dict, sa_column=Column(JSONB, nullable=False)
+    )  # dimensions, input_type
     vector_table: str = Field(max_length=63)
 
     chunk_size: int

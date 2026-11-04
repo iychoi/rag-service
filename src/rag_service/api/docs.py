@@ -20,8 +20,9 @@ REST API of rag-service: manage documents in **datasets**, index them with a sel
 **Authorization** is not performed by this service. An external gateway authenticates callers and
 authorizes per dataset; every dataset-scoped endpoint carries the dataset id in its path.
 
-**Model API key**: indexing and search requests send the LiteLLM key in `X-Model-API-Key` when the
-dataset's embedding model requires one (see `GET /v1/embedding-models`). The key is never stored.
+**Model API key**: requests that call LiteLLM send the caller's key in `X-Model-API-Key`: dataset
+creation, indexing, and search for datasets with a `litellm` embedding model, and every /query.
+The key is never stored. The LiteLLM base URL is server configuration and never comes from requests.
 
 **Errors** always have the shape `{"error": {"code": "...", "message": "..."}}`.
 
@@ -31,7 +32,7 @@ See API.md in the repository for a guide with end-to-end examples.
 OPENAPI_VERSION = "3.0.3"
 
 TAGS: list[dict[str, str]] = [
-    {"name": "datasets", "description": "Datasets (unit of access control) and the embedding model catalog."},
+    {"name": "datasets", "description": "Datasets: the unit of access control; each fixes its embedding model."},
     {"name": "documents", "description": "Upload, list, download, and delete documents in a dataset."},
     {"name": "indexing", "description": "Indexing jobs (parse → chunk → embed → store) and parser status."},
     {"name": "search", "description": "Vector search and question answering within one dataset."},
@@ -44,9 +45,9 @@ _STATUS_TEXT = {
     409: "Conflict",
     413: "Payload too large",
     422: "Invalid request",
-    502: "Bad gateway (LLM/LiteLLM error)",
+    502: "Bad gateway (LiteLLM / model provider error)",
     503: "Service unavailable",
-    504: "Gateway timeout (LLM)",
+    504: "Gateway timeout (model provider)",
 }
 
 _EXAMPLE_MESSAGES = {
@@ -60,11 +61,11 @@ _EXAMPLE_MESSAGES = {
     "duplicate_document": "identical file already exists as document 'bbd713912b614848a8f0def3f73aa304'",
     "job_in_progress": "document 'bbd713912b614848a8f0def3f73aa304' already has an active indexing job",
     "job_not_active": "job is already succeeded",
-    "embedding_model_unavailable": "embedding model 'hash-dev' is no longer in the catalog",
     "file_too_large": "file exceeds 100 MB limit",
     "validation_error": "query: String should have at least 1 character",
-    "unknown_embedding_model": "unknown embedding_model_id 'nope' (available: ['hash-dev'])",
-    "chunk_size_too_large": "chunk_size 9000 exceeds model max input (8192 tokens)",
+    "embedding_model_required": "embedding.model is required for litellm",
+    "invalid_embedding_model": "model gateway returned HTTP 400: Invalid model name passed in model=titan-embed-v9",
+    "embedding_dim_too_large": "model returns 3072-dimensional vectors; at most 2000 are supported",
     "invalid_chunk_overlap": "chunk_overlap must be smaller than chunk_size",
     "invalid_metadata": "metadata key 'job_id' is reserved",
     "invalid_filename": "uploaded file must have a filename",
@@ -77,10 +78,10 @@ _EXAMPLE_MESSAGES = {
     "db_unavailable": "database is not reachable",
     "model_not_allowed": "model 'gpt-x' is not allowed (allowed: ['claude-sonnet-5-5', 'claude-haiku-5-5'])",
     "upstream_auth_failed": "model provider rejected the API key",
-    "llm_error": "LLM gateway returned HTTP 400: model not found",
-    "llm_unreachable": "could not reach the LLM gateway",
-    "llm_not_configured": "LITELLM_BASE_URL is not configured",
-    "llm_timeout": "LLM did not respond within 120s",
+    "upstream_error": "model gateway returned HTTP 429: rate limit exceeded",
+    "upstream_unreachable": "could not reach the model gateway",
+    "litellm_not_configured": "LITELLM_BASE_URL is not configured",
+    "upstream_timeout": "model provider did not respond within 120s",
 }
 
 

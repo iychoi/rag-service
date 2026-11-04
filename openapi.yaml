@@ -13,9 +13,11 @@ info:
     authorizes per dataset; every dataset-scoped endpoint carries the dataset id in its path.
 
 
-    **Model API key**: indexing and search requests send the LiteLLM key in `X-Model-API-Key` when the
+    **Model API key**: requests that call LiteLLM send the caller''s key in `X-Model-API-Key`: dataset
 
-    dataset''s embedding model requires one (see `GET /v1/embedding-models`). The key is never stored.
+    creation, indexing, and search for datasets with a `litellm` embedding model, and every /query.
+
+    The key is never stored. The LiteLLM base URL is server configuration and never comes from requests.
 
 
     **Errors** always have the shape `{"error": {"code": "...", "message": "..."}}`.
@@ -29,32 +31,27 @@ servers:
 - url: http://localhost:8000
   description: Local docker compose
 paths:
-  /v1/embedding-models:
-    get:
-      tags:
-      - datasets
-      summary: List embedding models
-      description: Embedding models a dataset can be created with. `requires_api_key` tells whether indexing
-        and search requests must send `X-Model-API-Key`.
-      operationId: list_embedding_models
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                items:
-                  $ref: '#/components/schemas/EmbeddingModelOut'
-                type: array
-                title: Response List Embedding Models
   /v1/datasets:
     post:
       tags:
       - datasets
       summary: Create a dataset
-      description: The embedding model is chosen here and cannot be changed later. The dataset's vector
-        table is created immediately.
+      description: 'The embedding model is chosen here and cannot be changed later. For a `litellm` model,
+        send `X-Model-API-Key`: the model is called once to measure its output dimension, which the dataset''s
+        vector table needs. The LiteLLM base URL is server configuration.'
       operationId: create_dataset
+      parameters:
+      - name: X-Model-API-Key
+        in: header
+        required: false
+        schema:
+          type: string
+          description: LiteLLM key for embedding/LLM calls. Required when the dataset's embedding model
+            has requires_api_key=true. Never stored.
+          title: X-Model-Api-Key
+          nullable: true
+        description: LiteLLM key for embedding/LLM calls. Required when the dataset's embedding model
+          has requires_api_key=true. Never stored.
       requestBody:
         required: true
         content:
@@ -68,6 +65,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DatasetOut'
+        '400':
+          description: 'Bad request. Error codes: `missing_model_api_key`'
+          content:
+            application/json:
+              examples:
+                missing_model_api_key:
+                  value:
+                    error:
+                      code: missing_model_api_key
+                      message: X-Model-API-Key header is required
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: 'Conflict. Error codes: `external_ref_conflict`'
           content:
@@ -81,8 +90,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
-          description: 'Invalid request. Error codes: `validation_error`, `unknown_embedding_model`, `chunk_size_too_large`,
-            `invalid_chunk_overlap`, `invalid_metadata`'
+          description: 'Invalid request. Error codes: `validation_error`, `embedding_model_required`,
+            `invalid_embedding_model`, `embedding_dim_too_large`, `invalid_chunk_overlap`, `invalid_metadata`'
           content:
             application/json:
               examples:
@@ -91,16 +100,21 @@ paths:
                     error:
                       code: validation_error
                       message: 'query: String should have at least 1 character'
-                unknown_embedding_model:
+                embedding_model_required:
                   value:
                     error:
-                      code: unknown_embedding_model
-                      message: 'unknown embedding_model_id ''nope'' (available: [''hash-dev''])'
-                chunk_size_too_large:
+                      code: embedding_model_required
+                      message: embedding.model is required for litellm
+                invalid_embedding_model:
                   value:
                     error:
-                      code: chunk_size_too_large
-                      message: chunk_size 9000 exceeds model max input (8192 tokens)
+                      code: invalid_embedding_model
+                      message: 'model gateway returned HTTP 400: Invalid model name passed in model=titan-embed-v9'
+                embedding_dim_too_large:
+                  value:
+                    error:
+                      code: embedding_dim_too_large
+                      message: model returns 3072-dimensional vectors; at most 2000 are supported
                 invalid_chunk_overlap:
                   value:
                     error:
@@ -111,6 +125,53 @@ paths:
                     error:
                       code: invalid_metadata
                       message: metadata key 'job_id' is reserved
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: 'Bad gateway (LiteLLM / model provider error). Error codes: `upstream_auth_failed`,
+            `upstream_error`, `upstream_unreachable`'
+          content:
+            application/json:
+              examples:
+                upstream_auth_failed:
+                  value:
+                    error:
+                      code: upstream_auth_failed
+                      message: model provider rejected the API key
+                upstream_error:
+                  value:
+                    error:
+                      code: upstream_error
+                      message: 'model gateway returned HTTP 429: rate limit exceeded'
+                upstream_unreachable:
+                  value:
+                    error:
+                      code: upstream_unreachable
+                      message: could not reach the model gateway
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 'Service unavailable. Error codes: `litellm_not_configured`'
+          content:
+            application/json:
+              examples:
+                litellm_not_configured:
+                  value:
+                    error:
+                      code: litellm_not_configured
+                      message: LITELLM_BASE_URL is not configured
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '504':
+          description: 'Gateway timeout (model provider). Error codes: `upstream_timeout`'
+          content:
+            application/json:
+              examples:
+                upstream_timeout:
+                  value:
+                    error:
+                      code: upstream_timeout
+                      message: model provider did not respond within 120s
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
     get:
@@ -444,7 +505,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '503':
-          description: 'Service unavailable. Error codes: `parser_unavailable`'
+          description: 'Service unavailable. Error codes: `parser_unavailable`, `litellm_not_configured`'
           content:
             application/json:
               examples:
@@ -453,6 +514,11 @@ paths:
                     error:
                       code: parser_unavailable
                       message: parser 'docling' is unavailable
+                litellm_not_configured:
+                  value:
+                    error:
+                      code: litellm_not_configured
+                      message: LITELLM_BASE_URL is not configured
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
     get:
@@ -933,7 +999,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
-          description: 'Conflict. Error codes: `job_in_progress`, `embedding_model_unavailable`'
+          description: 'Conflict. Error codes: `job_in_progress`'
           content:
             application/json:
               examples:
@@ -943,11 +1009,6 @@ paths:
                       code: job_in_progress
                       message: document 'bbd713912b614848a8f0def3f73aa304' already has an active indexing
                         job
-                embedding_model_unavailable:
-                  value:
-                    error:
-                      code: embedding_model_unavailable
-                      message: embedding model 'hash-dev' is no longer in the catalog
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
@@ -974,7 +1035,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '503':
-          description: 'Service unavailable. Error codes: `parser_unavailable`'
+          description: 'Service unavailable. Error codes: `parser_unavailable`, `litellm_not_configured`'
           content:
             application/json:
               examples:
@@ -983,6 +1044,11 @@ paths:
                     error:
                       code: parser_unavailable
                       message: parser 'docling' is unavailable
+                litellm_not_configured:
+                  value:
+                    error:
+                      code: litellm_not_configured
+                      message: LITELLM_BASE_URL is not configured
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/datasets/{dataset_id}/index:
@@ -1048,18 +1114,6 @@ paths:
                       message: dataset '52967db904d44a09b33f88b3c9f64a6a' not found
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-        '409':
-          description: 'Conflict. Error codes: `embedding_model_unavailable`'
-          content:
-            application/json:
-              examples:
-                embedding_model_unavailable:
-                  value:
-                    error:
-                      code: embedding_model_unavailable
-                      message: embedding model 'hash-dev' is no longer in the catalog
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
         '422':
           description: 'Invalid request. Error codes: `validation_error`, `invalid_parser_options`'
           content:
@@ -1078,7 +1132,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '503':
-          description: 'Service unavailable. Error codes: `parser_unavailable`'
+          description: 'Service unavailable. Error codes: `parser_unavailable`, `litellm_not_configured`'
           content:
             application/json:
               examples:
@@ -1087,6 +1141,11 @@ paths:
                     error:
                       code: parser_unavailable
                       message: parser 'docling' is unavailable
+                litellm_not_configured:
+                  value:
+                    error:
+                      code: litellm_not_configured
+                      message: LITELLM_BASE_URL is not configured
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/datasets/{dataset_id}/jobs:
@@ -1301,7 +1360,7 @@ paths:
       - search
       summary: Search a dataset
       description: Returns the chunks most similar to the query from all indexed documents of the dataset.
-        Send `X-Model-API-Key` if the dataset's embedding model requires it.
+        Send `X-Model-API-Key` if the dataset uses a `litellm` embedding model.
       operationId: search
       parameters:
       - name: dataset_id
@@ -1358,18 +1417,6 @@ paths:
                       message: dataset '52967db904d44a09b33f88b3c9f64a6a' not found
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-        '409':
-          description: 'Conflict. Error codes: `embedding_model_unavailable`'
-          content:
-            application/json:
-              examples:
-                embedding_model_unavailable:
-                  value:
-                    error:
-                      code: embedding_model_unavailable
-                      message: embedding model 'hash-dev' is no longer in the catalog
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
         '422':
           description: 'Invalid request. Error codes: `validation_error`, `top_k_too_large`, `invalid_filter`'
           content:
@@ -1390,6 +1437,53 @@ paths:
                     error:
                       code: invalid_filter
                       message: invalid metadata filter key 'a b'
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: 'Bad gateway (LiteLLM / model provider error). Error codes: `upstream_auth_failed`,
+            `upstream_error`, `upstream_unreachable`'
+          content:
+            application/json:
+              examples:
+                upstream_auth_failed:
+                  value:
+                    error:
+                      code: upstream_auth_failed
+                      message: model provider rejected the API key
+                upstream_error:
+                  value:
+                    error:
+                      code: upstream_error
+                      message: 'model gateway returned HTTP 429: rate limit exceeded'
+                upstream_unreachable:
+                  value:
+                    error:
+                      code: upstream_unreachable
+                      message: could not reach the model gateway
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 'Service unavailable. Error codes: `litellm_not_configured`'
+          content:
+            application/json:
+              examples:
+                litellm_not_configured:
+                  value:
+                    error:
+                      code: litellm_not_configured
+                      message: LITELLM_BASE_URL is not configured
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '504':
+          description: 'Gateway timeout (model provider). Error codes: `upstream_timeout`'
+          content:
+            application/json:
+              examples:
+                upstream_timeout:
+                  value:
+                    error:
+                      code: upstream_timeout
+                      message: model provider did not respond within 120s
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/datasets/{dataset_id}/query:
@@ -1456,18 +1550,6 @@ paths:
                       message: dataset '52967db904d44a09b33f88b3c9f64a6a' not found
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-        '409':
-          description: 'Conflict. Error codes: `embedding_model_unavailable`'
-          content:
-            application/json:
-              examples:
-                embedding_model_unavailable:
-                  value:
-                    error:
-                      code: embedding_model_unavailable
-                      message: embedding model 'hash-dev' is no longer in the catalog
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
         '422':
           description: 'Invalid request. Error codes: `validation_error`, `top_k_too_large`, `invalid_filter`,
             `model_not_allowed`'
@@ -1497,8 +1579,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '502':
-          description: 'Bad gateway (LLM/LiteLLM error). Error codes: `upstream_auth_failed`, `llm_error`,
-            `llm_unreachable`'
+          description: 'Bad gateway (LiteLLM / model provider error). Error codes: `upstream_auth_failed`,
+            `upstream_error`, `upstream_unreachable`'
           content:
             application/json:
               examples:
@@ -1507,40 +1589,40 @@ paths:
                     error:
                       code: upstream_auth_failed
                       message: model provider rejected the API key
-                llm_error:
+                upstream_error:
                   value:
                     error:
-                      code: llm_error
-                      message: 'LLM gateway returned HTTP 400: model not found'
-                llm_unreachable:
+                      code: upstream_error
+                      message: 'model gateway returned HTTP 429: rate limit exceeded'
+                upstream_unreachable:
                   value:
                     error:
-                      code: llm_unreachable
-                      message: could not reach the LLM gateway
+                      code: upstream_unreachable
+                      message: could not reach the model gateway
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '503':
-          description: 'Service unavailable. Error codes: `llm_not_configured`'
+          description: 'Service unavailable. Error codes: `litellm_not_configured`'
           content:
             application/json:
               examples:
-                llm_not_configured:
+                litellm_not_configured:
                   value:
                     error:
-                      code: llm_not_configured
+                      code: litellm_not_configured
                       message: LITELLM_BASE_URL is not configured
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '504':
-          description: 'Gateway timeout (LLM). Error codes: `llm_timeout`'
+          description: 'Gateway timeout (model provider). Error codes: `upstream_timeout`'
           content:
             application/json:
               examples:
-                llm_timeout:
+                upstream_timeout:
                   value:
                     error:
-                      code: llm_timeout
-                      message: LLM did not respond within 120s
+                      code: upstream_timeout
+                      message: model provider did not respond within 120s
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /healthz:
@@ -1650,11 +1732,9 @@ components:
           maxLength: 255
           minLength: 1
           title: Name
-        embedding_model_id:
-          type: string
-          minLength: 1
-          title: Embedding Model Id
-          description: Catalog id from GET /v1/embedding-models. Cannot be changed later.
+        embedding:
+          $ref: '#/components/schemas/EmbeddingConfig'
+          description: Embedding model. Cannot be changed later. The base URL is server configuration.
         external_ref:
           type: string
           maxLength: 255
@@ -1670,7 +1750,7 @@ components:
           maximum: 8192.0
           minimum: 64.0
           title: Chunk Size
-          description: Tokens per chunk; at most the model's max_input_tokens
+          description: Tokens per chunk; must fit the embedding model's input limit (indexing fails otherwise)
           default: 512
         chunk_overlap:
           type: integer
@@ -1688,13 +1768,15 @@ components:
       type: object
       required:
       - name
-      - embedding_model_id
+      - embedding
       title: DatasetCreate
       example:
         chunk_overlap: 64
         chunk_size: 512
         description: Contracts and policies
-        embedding_model_id: hash-dev
+        embedding:
+          model: titan-embed-v2
+          provider: litellm
         external_ref: team-legal-001
         metadata:
           team: legal
@@ -1715,12 +1797,8 @@ components:
           type: string
           title: Description
           nullable: true
-        embedding_model_id:
-          type: string
-          title: Embedding Model Id
-        embedding_dim:
-          type: integer
-          title: Embedding Dim
+        embedding:
+          $ref: '#/components/schemas/EmbeddingOut'
         chunk_size:
           type: integer
           title: Chunk Size
@@ -1752,8 +1830,7 @@ components:
       - name
       - external_ref
       - description
-      - embedding_model_id
-      - embedding_dim
+      - embedding
       - chunk_size
       - chunk_overlap
       - metadata
@@ -1769,8 +1846,10 @@ components:
           indexed: 1
           total: 2
           uploaded: 1
-        embedding_dim: 512
-        embedding_model_id: hash-dev
+        embedding:
+          dim: 1024
+          model: titan-embed-v2
+          provider: litellm
         external_ref: team-legal-001
         id: 52967db904d44a09b33f88b3c9f64a6a
         metadata:
@@ -2027,11 +2106,44 @@ components:
       required:
       - document
       title: DocumentUploadOut
-    EmbeddingModelOut:
+    EmbeddingConfig:
       properties:
-        id:
+        provider:
           type: string
-          title: Id
+          enum:
+          - litellm
+          - hash
+          title: Provider
+          description: 'litellm: a model registered in the server''s LiteLLM proxy (needs X-Model-API-Key).
+            hash: local lexical embedding for development/tests only.'
+          default: litellm
+        model:
+          type: string
+          maxLength: 255
+          minLength: 1
+          title: Model
+          description: LiteLLM model name, e.g. titan-embed-v2. Required for litellm; ignored for hash.
+          nullable: true
+        dimensions:
+          type: integer
+          maximum: 2000.0
+          minimum: 1.0
+          title: Dimensions
+          description: 'Requested output dimension, for models that support it (e.g. Titan V2: 256/512/1024).
+            For hash: the vector size (default 512).'
+          nullable: true
+        input_type:
+          description: 'For asymmetric models (e.g. Cohere): input_type sent for documents and queries,
+            e.g. {"document": "search_document", "query": "search_query"}'
+          nullable: true
+          allOf:
+          - $ref: '#/components/schemas/InputTypes'
+      additionalProperties: false
+      type: object
+      title: EmbeddingConfig
+      description: Embedding model of a dataset, fixed at creation.
+    EmbeddingOut:
+      properties:
         provider:
           type: string
           title: Provider
@@ -2041,33 +2153,22 @@ components:
         dim:
           type: integer
           title: Dim
-        max_input_tokens:
+          description: Embedding dimension (measured at dataset creation)
+        dimensions:
           type: integer
-          title: Max Input Tokens
-        requires_api_key:
-          type: boolean
-          title: Requires Api Key
-        description:
-          type: string
-          title: Description
+          title: Dimensions
+          description: Requested output dimension, if any
           nullable: true
+        input_type:
+          nullable: true
+          allOf:
+          - $ref: '#/components/schemas/InputTypes'
       type: object
       required:
-      - id
       - provider
       - model
       - dim
-      - max_input_tokens
-      - requires_api_key
-      title: EmbeddingModelOut
-      example:
-        description: Local n-gram hashing embedding for development and tests
-        dim: 512
-        id: hash-dev
-        max_input_tokens: 8192
-        model: hash-ngram-v1
-        provider: hash
-        requires_api_key: false
+      title: EmbeddingOut
     ErrorBody:
       properties:
         code:
@@ -2121,6 +2222,26 @@ components:
         options:
           tier: basic
         parser: mineru
+    InputTypes:
+      properties:
+        document:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Document
+          description: input_type used when indexing
+        query:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Query
+          description: input_type used for search queries
+      additionalProperties: false
+      type: object
+      required:
+      - document
+      - query
+      title: InputTypes
     JobOut:
       properties:
         id:
@@ -2585,7 +2706,7 @@ components:
       title: TokenUsage
 tags:
 - name: datasets
-  description: Datasets (unit of access control) and the embedding model catalog.
+  description: 'Datasets: the unit of access control; each fixes its embedding model.'
 - name: documents
   description: Upload, list, download, and delete documents in a dataset.
 - name: indexing

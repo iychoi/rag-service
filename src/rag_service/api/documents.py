@@ -77,7 +77,7 @@ def _safe_filename(name: str | None) -> str:
             413: ["file_too_large"],
             422: ["validation_error", "invalid_filename", "invalid_json", "invalid_metadata",
                   "unsupported_parser_or_format", "invalid_parser_options"],
-            503: ["parser_unavailable"],
+            503: ["parser_unavailable", "litellm_not_configured"],
         }
     ),  # fmt: skip
 )

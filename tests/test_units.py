@@ -1,7 +1,6 @@
-"""Unit tests without a DB: page splitting, chunking, hash embedding, catalog, parser selection."""
+"""Unit tests without a DB: page splitting, chunking, hash embedding, parser selection."""
 
 import math
-from pathlib import Path
 
 import pytest
 
@@ -9,7 +8,6 @@ from rag_service.parsers.base import ParsedDocument, split_pages
 from rag_service.parsers.docling import DoclingParser
 from rag_service.parsers.passthrough import PassthroughParser
 from rag_service.parsers.registry import ParserRegistry
-from rag_service.providers.catalog import EmbeddingCatalog, EmbeddingModelEntry
 from rag_service.providers.embeddings import HashEmbedding
 from rag_service.services.chunking import chunk_markdown, split_sentences
 
@@ -62,18 +60,6 @@ def test_hash_embedding_similarity() -> None:
     assert math.isclose(sum(x * x for x in q), 1.0, rel_tol=1e-6)
     assert cos(q, near) > cos(q, far)
     assert emb.get_text_embedding("") == emb.get_text_embedding("   ")  # constant vector instead of a zero vector
-
-
-def test_catalog_rejects_large_dim_and_dupes(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="HNSW"):
-        EmbeddingModelEntry(id="x", provider="hash", model="m", dim=3072, max_input_tokens=10)
-    p = tmp_path / "c.yaml"
-    p.write_text(
-        "- {id: a, provider: hash, model: m, dim: 8, max_input_tokens: 10}\n"
-        "- {id: a, provider: hash, model: m, dim: 8, max_input_tokens: 10}\n"
-    )
-    with pytest.raises(ValueError, match="duplicate"):
-        EmbeddingCatalog.load(p)
 
 
 def test_registry_resolution() -> None:

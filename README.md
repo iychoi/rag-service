@@ -34,19 +34,21 @@ MinerU tiers: `flash` (text layer only), `basic` (ONNX models, CPU default), `st
 ```bash
 B=http://localhost:8000/v1
 
-# Create a dataset (embedding model is required)
-curl -s $B/embedding-models
-DS=$(curl -s -X POST $B/datasets -H 'content-type: application/json' \
-  -d '{"name":"legal","embedding_model_id":"hash-dev"}' | jq -r .id)
+KEY=sk-...   # your LiteLLM key, sent as X-Model-API-Key on calls that reach LiteLLM
+
+# Create a dataset with a LiteLLM embedding model (fixed for the dataset; its dimension is measured with your key)
+DS=$(curl -s -X POST $B/datasets -H 'content-type: application/json' -H "X-Model-API-Key: $KEY" \
+  -d '{"name":"legal","embedding":{"model":"titan-embed-v2"}}' | jq -r .id)
+# Without LiteLLM, for local development: -d '{"name":"dev","embedding":{"provider":"hash"}}' (lexical only)
 
 # Upload + index
-JOB=$(curl -s -X POST $B/datasets/$DS/documents \
+JOB=$(curl -s -X POST $B/datasets/$DS/documents -H "X-Model-API-Key: $KEY" \
   -F file=@contract.pdf -F index=true -F parser=docling -F 'options={"do_ocr": false}' \
   -F 'metadata={"year": 2025}' | jq -r .job.id)
 curl -s $B/datasets/$DS/jobs/$JOB          # status / stage / progress
 
 # Search
-curl -s -X POST $B/datasets/$DS/search -H 'content-type: application/json' \
+curl -s -X POST $B/datasets/$DS/search -H 'content-type: application/json' -H "X-Model-API-Key: $KEY" \
   -d '{"query":"contract termination terms","top_k":5,"filters":{"metadata":{"year":2025}}}'
 ```
 
@@ -57,8 +59,7 @@ curl -s -X POST $B/datasets/$DS/query -H 'content-type: application/json' -H "X-
   -d '{"query":"How can the agreement be terminated?"}'
 ```
 
-`/query` needs `LITELLM_BASE_URL` (e.g. `LITELLM_BASE_URL=https://litellm.example.com/v1 docker compose up -d`) and always the caller's LiteLLM key in `X-Model-API-Key`.
-If the embedding provider requires a key (after the LiteLLM embedding integration), indexing and search requests need the header too.
+The LiteLLM base URL is server configuration: `LITELLM_BASE_URL=https://litellm.example.com/v1 docker compose up -d`. It is never taken from requests; callers only send their key.
 
 ## Development
 

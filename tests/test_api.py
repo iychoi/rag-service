@@ -32,34 +32,35 @@ async def upload(
 # ---------------- datasets ----------------
 
 
-async def test_embedding_models(client: httpx.AsyncClient) -> None:
-    r = await client.get("/embedding-models")
-    assert r.status_code == 200
-    assert {"id": "hash-dev", "requires_api_key": False}.items() <= r.json()[0].items()
-
-
 async def test_dataset_lifecycle(client: httpx.AsyncClient, state: AppState) -> None:
-    r = await client.post("/datasets", json={"name": "x", "embedding_model_id": "nope"})
-    assert r.status_code == 422 and r.json()["error"]["code"] == "unknown_embedding_model"
     r = await client.post("/datasets", json={"name": "x"})
     assert r.status_code == 422 and r.json()["error"]["code"] == "validation_error"
+    r = await client.post("/datasets", json={"name": "x", "embedding": {"provider": "openai"}})
+    assert r.status_code == 422
     r = await client.post(
-        "/datasets", json={"name": "x", "embedding_model_id": "hash-dev", "chunk_size": 9000}
+        "/datasets", json={"name": "x", "embedding": {"provider": "hash"}, "chunk_size": 9000}
     )
     assert r.status_code == 422
+    r = await client.post(
+        "/datasets",
+        json={"name": "x", "embedding": {"provider": "hash"}, "chunk_size": 128, "chunk_overlap": 128},
+    )
+    assert r.status_code == 422 and r.json()["error"]["code"] == "invalid_chunk_overlap"
 
     r = await client.post(
         "/datasets",
-        json={"name": "legal", "embedding_model_id": "hash-dev", "external_ref": "ext-1",
-              "metadata": {"team": "legal"}},
+        json={"name": "legal", "embedding": {"provider": "hash", "dimensions": 256},
+              "external_ref": "ext-1", "metadata": {"team": "legal"}},
     )  # fmt: skip
     assert r.status_code == 201, r.text
     ds = r.json()
-    assert ds["embedding_dim"] == 512 and ds["metadata"] == {"team": "legal"}
+    assert ds["embedding"] == {"provider": "hash", "model": "hash-ngram-v1", "dim": 256,
+                               "dimensions": 256, "input_type": None}  # fmt: skip
+    assert ds["metadata"] == {"team": "legal"}
     assert await table_exists(state, ds["id"])
 
     r = await client.post(
-        "/datasets", json={"name": "dup", "embedding_model_id": "hash-dev", "external_ref": "ext-1"}
+        "/datasets", json={"name": "dup", "embedding": {"provider": "hash"}, "external_ref": "ext-1"}
     )
     assert r.status_code == 409
 
@@ -70,7 +71,7 @@ async def test_dataset_lifecycle(client: httpx.AsyncClient, state: AppState) -> 
 
     r = await client.patch(f"/datasets/{ds['id']}", json={"name": "legal2", "description": "d"})
     assert r.json()["name"] == "legal2" and r.json()["description"] == "d"
-    r = await client.patch(f"/datasets/{ds['id']}", json={"embedding_model_id": "x"})
+    r = await client.patch(f"/datasets/{ds['id']}", json={"embedding": {"provider": "hash"}})
     assert r.status_code == 422
 
     r = await client.delete(f"/datasets/{ds['id']}")
@@ -213,7 +214,7 @@ async def test_dataset_boundary(client: httpx.AsyncClient, dataset: dict) -> Non
     await wait_for_job(client, dataset["id"], job_id)
 
     other = (
-        await client.post("/datasets", json={"name": "other", "embedding_model_id": "hash-dev"})
+        await client.post("/datasets", json={"name": "other", "embedding": {"provider": "hash"}})
     ).json()
     try:
         for path in (

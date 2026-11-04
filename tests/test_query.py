@@ -154,18 +154,18 @@ async def test_query_upstream_errors(client: httpx.AsyncClient, dataset: dict) -
             400, json={"error": {"message": f"Invalid model name passed in model=x, key {KEY}"}}
         )
         r = await client.post(url, headers=headers, json={"query": "해지"})
-    assert r.status_code == 502 and r.json()["error"]["code"] == "llm_error"
+    assert r.status_code == 502 and r.json()["error"]["code"] == "upstream_error"
     assert "HTTP 400" in r.json()["error"]["message"] and KEY not in r.text
 
     with respx.mock() as router:
         router.post(CHAT_URL).mock(side_effect=httpx.ConnectError("refused"))
         r = await client.post(url, headers=headers, json={"query": "해지"})
-    assert r.status_code == 502 and r.json()["error"]["code"] == "llm_unreachable"
+    assert r.status_code == 502 and r.json()["error"]["code"] == "upstream_unreachable"
 
     with respx.mock() as router:
         router.post(CHAT_URL).mock(side_effect=httpx.ReadTimeout("slow"))
         r = await client.post(url, headers=headers, json={"query": "해지"})
-    assert r.status_code == 504 and r.json()["error"]["code"] == "llm_timeout"
+    assert r.status_code == 504 and r.json()["error"]["code"] == "upstream_timeout"
 
 
 async def test_query_not_configured(client: httpx.AsyncClient, dataset: dict, state: AppState) -> None:
@@ -177,4 +177,4 @@ async def test_query_not_configured(client: httpx.AsyncClient, dataset: dict, st
         )
     finally:
         state.settings.litellm_base_url = original
-    assert r.status_code == 503 and r.json()["error"]["code"] == "llm_not_configured"
+    assert r.status_code == 503 and r.json()["error"]["code"] == "litellm_not_configured"

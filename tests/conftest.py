@@ -35,12 +35,12 @@ def settings(database_url: str, tmp_path_factory: pytest.TempPathFactory) -> Set
     return Settings(
         database_url=database_url,
         data_dir=tmp_path_factory.mktemp("data"),
-        embedding_catalog_path=ROOT / "config" / "embedding_models.yaml",
         docling_url=DOCLING_TEST_URL,
         docling_poll_interval_s=0.01,
         mineru_url=MINERU_TEST_URL,
         mineru_poll_interval_s=0.01,
         litellm_base_url=LITELLM_TEST_URL,
+        litellm_max_retries=1,
         job_workers=2,
     )
 
@@ -67,7 +67,7 @@ async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
 @pytest.fixture
 async def dataset(client: httpx.AsyncClient) -> AsyncIterator[dict]:
     r = await client.post(
-        "/datasets", json={"name": "test", "embedding_model_id": "hash-dev", "chunk_size": 256}
+        "/datasets", json={"name": "test", "embedding": {"provider": "hash"}, "chunk_size": 256}
     )
     assert r.status_code == 201, r.text
     ds = r.json()

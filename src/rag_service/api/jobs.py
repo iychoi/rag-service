@@ -64,9 +64,9 @@ async def list_parsers(state: State) -> list[ParserHealthOut]:
         {
             400: ["missing_model_api_key"],
             404: ["dataset_not_found", "document_not_found"],
-            409: ["job_in_progress", "embedding_model_unavailable"],
+            409: ["job_in_progress"],
             422: ["validation_error", "unsupported_parser_or_format", "invalid_parser_options"],
-            503: ["parser_unavailable"],
+            503: ["parser_unavailable", "litellm_not_configured"],
         }
     ),
 )
@@ -97,9 +97,8 @@ async def index_document(
         {
             400: ["missing_model_api_key"],
             404: ["dataset_not_found"],
-            409: ["embedding_model_unavailable"],
             422: ["validation_error", "invalid_parser_options"],
-            503: ["parser_unavailable"],
+            503: ["parser_unavailable", "litellm_not_configured"],
         }
     ),
 )

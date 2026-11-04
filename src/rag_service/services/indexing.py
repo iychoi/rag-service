@@ -21,8 +21,10 @@ from rag_service.models.tables import (
 )
 from rag_service.parsers.base import ParsedDocument, ParserError
 from rag_service.parsers.registry import ParserRegistry
-from rag_service.providers.catalog import EmbeddingCatalog
+from rag_service.config import Settings
 from rag_service.providers.embeddings import build_embedding
+from rag_service.providers.upstream import upstream_api_error
+from rag_service.services.embedding import spec_from_dataset
 from rag_service.services.chunking import Chunk, chunk_markdown
 from rag_service.storage.blob import BlobStore
 from rag_service.storage.vector import VectorStoreManager
@@ -46,15 +48,14 @@ class IndexingPipeline:
         parsers: ParserRegistry,
         blob: BlobStore,
         vectors: VectorStoreManager,
-        catalog: EmbeddingCatalog,
-        embed_batch_size: int = 64,
+        settings: Settings,
     ) -> None:
         self.db = db
         self.parsers = parsers
         self.blob = blob
         self.vectors = vectors
-        self.catalog = catalog
-        self.embed_batch_size = embed_batch_size
+        self.settings = settings
+        self.embed_batch_size = settings.embed_batch_size
 
     async def _update_job(self, job_id: str, **values: Any) -> None:
         async with self.db.sessionmaker() as s:
@@ -167,11 +168,17 @@ class IndexingPipeline:
         api_key: str | None,
         parser_name: str,
     ) -> list[TextNode]:
-        entry = self.catalog.get(ds.embedding_model_id)
-        if entry is None:
-            raise JobFailedError(f"embedding model '{ds.embedding_model_id}' is not in the catalog")
+        s = self.settings
         try:
-            embed_model = build_embedding(entry, api_key)
+            embed_model = build_embedding(
+                spec_from_dataset(ds),
+                purpose="document",
+                api_key=api_key,
+                base_url=s.litellm_base_url,
+                batch_size=s.embed_batch_size,
+                timeout_s=s.embedding_timeout_s,
+                max_retries=s.litellm_max_retries,
+            )
         except ValueError as e:
             raise JobFailedError(str(e)) from e
 
@@ -179,7 +186,14 @@ class IndexingPipeline:
         total = max(1, len(chunks))
         for start in range(0, len(chunks), self.embed_batch_size):
             batch = chunks[start : start + self.embed_batch_size]
-            vectors = await embed_model.aget_text_embedding_batch([c.embedding_text() for c in batch])
+            try:
+                vectors = await embed_model.aget_text_embedding_batch(
+                    [c.embedding_text() for c in batch]
+                )
+            except Exception as e:
+                if (err := upstream_api_error(e, s.embedding_timeout_s)) is not None:
+                    raise JobFailedError(f"embedding failed ({err.code}): {err.message}") from e
+                raise
             for chunk, vec in zip(batch, vectors, strict=True):
                 if len(vec) != ds.embedding_dim:
                     raise JobFailedError(

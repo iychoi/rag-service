@@ -2,12 +2,11 @@
 
 import re
 
-import openai
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
 
-from rag_service.errors import APIError
 from rag_service.models.schemas import QuerySource, SearchResult, TokenUsage
 from rag_service.providers.llms import build_llm
+from rag_service.providers.upstream import upstream_api_error
 
 SYSTEM_PROMPT = """\
 You answer questions using only the numbered sources provided by the user.
@@ -19,7 +18,6 @@ Rules:
 - Be concise."""
 
 _CITATION = re.compile(r"\[(\d{1,3})\]")
-_KEY_LIKE = re.compile(r"sk-[A-Za-z0-9_\-]{4,}")
 
 
 def number_sources(results: list[SearchResult]) -> list[QuerySource]:
@@ -72,16 +70,10 @@ async def generate_answer(
     ]
     try:
         response = await llm.achat(messages)
-    except (openai.AuthenticationError, openai.PermissionDeniedError) as e:
-        raise APIError(502, "upstream_auth_failed", "model provider rejected the API key") from e
-    except openai.APITimeoutError as e:
-        raise APIError(504, "llm_timeout", f"LLM did not respond within {timeout_s:.0f}s") from e
-    except openai.APIConnectionError as e:
-        raise APIError(502, "llm_unreachable", "could not reach the LLM gateway") from e
-    except openai.APIStatusError as e:
-        # Never echo the request (it may contain the key); the status and upstream message are safe.
-        detail = _upstream_message(e)
-        raise APIError(502, "llm_error", f"LLM gateway returned HTTP {e.status_code}: {detail}") from e
+    except Exception as e:
+        if (err := upstream_api_error(e, timeout_s)) is not None:
+            raise err from e
+        raise
 
     answer = (response.message.content or "").strip()
     counts = response.additional_kwargs or {}
@@ -90,10 +82,3 @@ async def generate_answer(
     )
     return answer, usage
 
-
-def _upstream_message(e: openai.APIStatusError) -> str:
-    body = e.body if isinstance(e.body, dict) else {}
-    err = body.get("error", body)
-    msg = err.get("message") if isinstance(err, dict) else None
-    # Gateways sometimes echo (partial) keys in error messages
-    return _KEY_LIKE.sub("sk-***", str(msg or e.message))[:300]

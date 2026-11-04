@@ -73,30 +73,49 @@ class Page[T](BaseModel):
 # ---------- embedding models ----------
 
 
-class EmbeddingModelOut(BaseModel):
-    model_config = ConfigDict(
-        json_schema_extra={
-            "examples": [
-                {
-                    "id": "hash-dev",
-                    "provider": "hash",
-                    "model": "hash-ngram-v1",
-                    "dim": 512,
-                    "max_input_tokens": 8192,
-                    "requires_api_key": False,
-                    "description": "Local n-gram hashing embedding for development and tests",
-                }
-            ]
-        }
+class InputTypes(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document: str = Field(min_length=1, max_length=64, description="input_type used when indexing")
+    query: str = Field(min_length=1, max_length=64, description="input_type used for search queries")
+
+
+class EmbeddingConfig(BaseModel):
+    """Embedding model of a dataset, fixed at creation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["litellm", "hash"] = Field(
+        default="litellm",
+        description="litellm: a model registered in the server's LiteLLM proxy (needs "
+        "X-Model-API-Key). hash: local lexical embedding for development/tests only.",
+    )
+    model: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="LiteLLM model name, e.g. titan-embed-v2. Required for litellm; ignored for hash.",
+    )
+    dimensions: int | None = Field(
+        default=None,
+        ge=1,
+        le=2000,
+        description="Requested output dimension, for models that support it (e.g. Titan V2: 256/512/1024). "
+        "For hash: the vector size (default 512).",
+    )
+    input_type: InputTypes | None = Field(
+        default=None,
+        description="For asymmetric models (e.g. Cohere): input_type sent for documents and queries, "
+        'e.g. {"document": "search_document", "query": "search_query"}',
     )
 
-    id: str
+
+class EmbeddingOut(BaseModel):
     provider: str
     model: str
-    dim: int
-    max_input_tokens: int
-    requires_api_key: bool
-    description: str | None = None
+    dim: int = Field(description="Embedding dimension (measured at dataset creation)")
+    dimensions: int | None = Field(default=None, description="Requested output dimension, if any")
+    input_type: InputTypes | None = None
 
 
 # ---------- datasets ----------
@@ -109,7 +128,7 @@ class DatasetCreate(BaseModel):
             "examples": [
                 {
                     "name": "legal-docs",
-                    "embedding_model_id": "hash-dev",
+                    "embedding": {"provider": "litellm", "model": "titan-embed-v2"},
                     "external_ref": "team-legal-001",
                     "description": "Contracts and policies",
                     "chunk_size": 512,
@@ -121,15 +140,18 @@ class DatasetCreate(BaseModel):
     )
 
     name: str = Field(min_length=1, max_length=255)
-    embedding_model_id: str = Field(
-        min_length=1, description="Catalog id from GET /v1/embedding-models. Cannot be changed later."
+    embedding: EmbeddingConfig = Field(
+        description="Embedding model. Cannot be changed later. The base URL is server configuration."
     )
     external_ref: str | None = Field(
         default=None, max_length=255, description="Unique identifier from an external system"
     )
     description: str | None = None
     chunk_size: int = Field(
-        default=512, ge=64, le=8192, description="Tokens per chunk; at most the model's max_input_tokens"
+        default=512,
+        ge=64,
+        le=8192,
+        description="Tokens per chunk; must fit the embedding model's input limit (indexing fails otherwise)",
     )
     chunk_overlap: int = Field(default=64, ge=0, le=2048, description="Must be less than chunk_size")
     metadata: dict[str, Any] = Field(
@@ -157,8 +179,13 @@ class DatasetOut(BaseModel):
                     "name": "legal-docs",
                     "external_ref": "team-legal-001",
                     "description": "Contracts and policies",
-                    "embedding_model_id": "hash-dev",
-                    "embedding_dim": 512,
+                    "embedding": {
+                        "provider": "litellm",
+                        "model": "titan-embed-v2",
+                        "dim": 1024,
+                        "dimensions": None,
+                        "input_type": None,
+                    },
                     "chunk_size": 512,
                     "chunk_overlap": 64,
                     "metadata": {"team": "legal"},
@@ -174,8 +201,7 @@ class DatasetOut(BaseModel):
     name: str
     external_ref: str | None
     description: str | None
-    embedding_model_id: str
-    embedding_dim: int
+    embedding: EmbeddingOut
     chunk_size: int
     chunk_overlap: int
     metadata: dict[str, Any]
@@ -192,8 +218,13 @@ class DatasetOut(BaseModel):
             name=ds.name,
             external_ref=ds.external_ref,
             description=ds.description,
-            embedding_model_id=ds.embedding_model_id,
-            embedding_dim=ds.embedding_dim,
+            embedding=EmbeddingOut(
+                provider=ds.embedding_provider,
+                model=ds.embedding_model,
+                dim=ds.embedding_dim,
+                dimensions=ds.embedding_options.get("dimensions"),
+                input_type=ds.embedding_options.get("input_type"),
+            ),
             chunk_size=ds.chunk_size,
             chunk_overlap=ds.chunk_overlap,
             metadata=ds.meta,

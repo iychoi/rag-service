@@ -11,8 +11,6 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://rag:rag@localhost:5432/rag"
     db_pool_size: int = 10
 
-    embedding_catalog_path: Path = Path("./config/embedding_models.yaml")
-
     docling_url: str = "http://localhost:5001"
     docling_concurrency: int = 2
     docling_timeout_s: float = 900.0
@@ -31,8 +29,11 @@ class Settings(BaseSettings):
     max_upload_mb: int = 100
     max_top_k: int = 50
 
-    # LiteLLM proxy (OpenAI-compatible). Required for /query; the key comes from each request.
+    # LiteLLM proxy (OpenAI-compatible) for embeddings and LLM calls. The base URL is server
+    # configuration only (never taken from requests); the key comes from each request.
     litellm_base_url: str | None = None
+    litellm_max_retries: int = 2
+    embedding_timeout_s: float = 60.0
     llm_model: str = "claude-sonnet-5-5"
     # Comma-separated models a /query request may pick with `model`
     llm_allowed_models: str = "claude-sonnet-5-5,claude-haiku-5-5"

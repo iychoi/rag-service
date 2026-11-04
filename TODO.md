@@ -2,26 +2,26 @@
 
 Remaining work, grouped by phase. Each item carries the context needed to pick it up.
 
-Current state: dataset/document management, indexing jobs (Docling and MinerU on CPU), per-dataset pgvector tables, search, and `/query` (LLM answers with citations via LiteLLM) all work end to end. Embeddings use the development-only `hash-dev` model, so search is lexical, not semantic, until the LiteLLM integration lands.
+Current state: dataset/document management, indexing jobs (Docling and MinerU on CPU), per-dataset pgvector tables, search, and `/query` (LLM answers with citations via LiteLLM) all work end to end. Each dataset picks its embedding model at creation (a LiteLLM model name, or the development-only `hash` provider); the LiteLLM base URL is server configuration and callers send only their key. The LiteLLM paths are tested against a mocked LiteLLM only.
 
 ---
 
 ## Phase 1 — MVP (remaining)
 
 ### LiteLLM embedding provider
-- [ ] Implement the `litellm` provider in `src/rag_service/providers/embeddings.py` using LlamaIndex `OpenAILikeEmbedding` (`api_base=LITELLM_BASE_URL`, `model_name=<catalog model>`, `api_key=<X-Model-API-Key>`), registered in `PROVIDERS` with `requires_api_key=True`.
-- [x] `LITELLM_BASE_URL` setting (added with `/query`; reuse it for embeddings).
-- [ ] Enable the commented-out entries in `config/embedding_models.yaml` once the models are registered in LiteLLM:
+- [x] `litellm` provider (`OpenAILikeEmbedding`, base URL from `LITELLM_BASE_URL`, key per request); datasets choose the model at creation and the output dimension is measured with one embedding call. The server-side model catalog was removed.
+- [x] Upstream errors mapped without leaking the key (`providers/upstream.py`): `502 upstream_auth_failed` / `upstream_error` / `upstream_unreachable`, `504 upstream_timeout`; indexing jobs fail with `embedding failed (<code>): ...`.
+- [ ] **Verify against the real LiteLLM** once an embedding model is registered: dataset creation (dimension probe), indexing, search. Candidate models (all ≤ 2000 dims, the pgvector HNSW limit):
 
-  | Catalog id | Bedrock model id | Dim | Max input | Asymmetric (`input_type`) |
-  |------------|------------------|-----|-----------|---------------------------|
-  | `titan-embed-v2` | `amazon.titan-embed-text-v2:0` | 1024 | 8,192 tokens | no — default for Phase 1 |
-  | `cohere-embed-v4` | `cohere.embed-v4:0` | 1536 | 128K tokens | yes (Phase 2) |
+  | LiteLLM name (suggested) | Bedrock model id | Dim | Max input | Asymmetric (`input_type`) |
+  |--------------------------|------------------|-----|-----------|---------------------------|
+  | `titan-embed-v2` | `amazon.titan-embed-text-v2:0` | 1024 (256/512 via `dimensions`) | 8,192 tokens | no — default |
+  | `cohere-embed-v4` | `cohere.embed-v4:0` | 1536 | 128K tokens | yes: `{"document": "search_document", "query": "search_query"}` |
   | `cohere-embed-multilingual-v3` | `cohere.embed-multilingual-v3` | 1024 | 512 tokens | yes — fallback if v4 is unavailable |
 
-  Catalog `dim` must stay ≤ 2000 (pgvector HNSW limit on `vector`).
-- [ ] Map upstream auth failures without leaking the key: job error `model provider authentication failed`; search returns `502 upstream_auth_failed` (the code already exists for `/query`; reuse the mapping in `services/answering.py`).
-- [ ] Tests: mock LiteLLM's `/embeddings` endpoint with respx (key header forwarded, dimension mismatch → job fails with `dimension_mismatch`, missing key → `400 missing_model_api_key`).
+- [ ] **Chunk size vs. model input limit**: the catalog used to reject a `chunk_size` above the model's input limit; now an oversized chunk only fails the indexing job. Consider reading `max_input_tokens` from LiteLLM's `/model/info` at dataset creation.
+- [ ] **Model discovery**: `GET /v1/embedding-models` was removed with the catalog. If clients need a model list, proxy LiteLLM's `/v1/models` with the caller's key.
+- [ ] **Dev-only `hash` provider**: consider a setting to disable it in production.
 
 ### Blocked / to verify
 - [ ] **Blocker:** ask the LiteLLM admin to register an embedding model (at least Titan Text Embeddings V2; Cohere Embed v4 too, for comparison). As of 2026-11-04 LiteLLM only has chat models registered (all on Bedrock, `us.` cross-region profiles).
@@ -32,7 +32,7 @@ Current state: dataset/document management, indexing jobs (Docling and MinerU on
 
 ## Phase 2 — Quality
 
-- [ ] **Cohere Embed v4 with `input_type`**: subclass `OpenAILikeEmbedding` to send `input_type=search_document` for documents and `search_query` for queries (values come from the catalog `input_type` field). Compare Korean retrieval quality against Titan V2 and decide the default.
+- [ ] **Cohere Embed v4 vs. Titan V2**: `input_type` per dataset is implemented (sent as `extra_body`); compare Korean retrieval quality and decide the default model.
 - [x] **`POST /v1/datasets/{dataset_id}/query`**: retrieval + LLM answer with `[n]` citations (`services/answering.py`, `providers/llms.py`). Mocked-LiteLLM tests only.
   - Settings: `LITELLM_BASE_URL`, `LLM_MODEL=claude-sonnet-5-5`, `LLM_ALLOWED_MODELS`, `LLM_TIMEOUT_S`, `LLM_MAX_OUTPUT_TOKENS`.
   - Models currently in LiteLLM and their price per 1M tokens (input/output): `claude-sonnet-5-5` $2.20/$11.00, `claude-haiku-5-5` $0.11/$0.55, `claude-opus-5-5` $4.40/$22.00 (too costly as default).

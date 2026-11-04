@@ -17,13 +17,15 @@ router = APIRouter(tags=["search"])
     response_model=SearchResponse,
     summary="Search a dataset",
     description="Returns the chunks most similar to the query from all indexed documents of the "
-    "dataset. Send `X-Model-API-Key` if the dataset's embedding model requires it.",
+    "dataset. Send `X-Model-API-Key` if the dataset uses a `litellm` embedding model.",
     responses=errors(
         {
             400: ["missing_model_api_key"],
             404: ["dataset_not_found"],
-            409: ["embedding_model_unavailable"],
             422: ["validation_error", "top_k_too_large", "invalid_filter"],
+            502: ["upstream_auth_failed", "upstream_error", "upstream_unreachable"],
+            503: ["litellm_not_configured"],
+            504: ["upstream_timeout"],
         }
     ),
 )
@@ -50,11 +52,10 @@ async def search(
         {
             400: ["missing_model_api_key"],
             404: ["dataset_not_found"],
-            409: ["embedding_model_unavailable"],
             422: ["validation_error", "top_k_too_large", "invalid_filter", "model_not_allowed"],
-            502: ["upstream_auth_failed", "llm_error", "llm_unreachable"],
-            503: ["llm_not_configured"],
-            504: ["llm_timeout"],
+            502: ["upstream_auth_failed", "upstream_error", "upstream_unreachable"],
+            503: ["litellm_not_configured"],
+            504: ["upstream_timeout"],
         }
     ),
 )
@@ -67,7 +68,7 @@ async def query(
 ) -> QueryResponse:
     settings = state.settings
     if not settings.litellm_base_url:
-        raise APIError(503, "llm_not_configured", "LITELLM_BASE_URL is not configured")
+        raise APIError(503, "litellm_not_configured", "LITELLM_BASE_URL is not configured")
     model = body.model or settings.llm_model
     if model not in settings.llm_allowed_model_list:
         raise APIError(

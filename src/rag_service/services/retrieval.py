@@ -8,8 +8,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from rag_service.errors import APIError
 from rag_service.models.schemas import SearchFilters, SearchResult
 from rag_service.models.tables import Dataset, Document
-from rag_service.providers.embeddings import build_embedding
-from rag_service.services.jobs import require_api_key_if_needed
+from rag_service.services.embedding import embed_query
 from rag_service.state import AppState
 
 _FILTER_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$")
@@ -45,11 +44,7 @@ async def retrieve(
     if document_ids is not None and not document_ids:
         return []
 
-    require_api_key_if_needed(state, ds, api_key)
-    entry = state.catalog.get(ds.embedding_model_id)
-    assert entry is not None  # checked by require_api_key_if_needed
-    embed_model = build_embedding(entry, api_key)
-    query_vec = await embed_model.aget_query_embedding(query)
+    query_vec = await embed_query(state, ds, query, api_key)
 
     result = await state.vectors.query(
         ds, query_vec, top_k, document_ids=document_ids, metadata=metadata

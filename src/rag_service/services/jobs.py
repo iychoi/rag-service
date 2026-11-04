@@ -8,20 +8,12 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from rag_service.errors import APIError
 from rag_service.models.tables import Dataset, Document, IndexJob
 from rag_service.parsers.base import DocumentParser
-from rag_service.providers.embeddings import provider_requires_api_key
+from rag_service.services.embedding import require_embedding_access
 from rag_service.state import AppState
 
 
 def require_api_key_if_needed(state: AppState, ds: Dataset, api_key: str | None) -> None:
-    entry = state.catalog.get(ds.embedding_model_id)
-    if entry is None:
-        raise APIError(
-            409,
-            "embedding_model_unavailable",
-            f"embedding model '{ds.embedding_model_id}' is no longer in the catalog",
-        )
-    if provider_requires_api_key(entry.provider) and not api_key:
-        raise APIError(400, "missing_model_api_key", "X-Model-API-Key header is required")
+    require_embedding_access(state, ds.embedding_provider, api_key)
 
 
 def resolve_parser(

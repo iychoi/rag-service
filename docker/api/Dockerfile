@@ -12,7 +12,6 @@ RUN pip install .
 
 COPY alembic.ini ./
 COPY migrations ./migrations
-COPY config ./config
 COPY docker/api/entrypoint.sh /entrypoint.sh
 
 RUN useradd --system --uid 1000 rag && mkdir -p /data && chown rag /data
