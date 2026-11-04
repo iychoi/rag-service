@@ -468,6 +468,8 @@ class QueryRequest(BaseModel):
                     "query": "How can the agreement be terminated?",
                     "top_k": 5,
                     "filters": {"metadata": {"year": 2025}},
+                    "model": "claude-sonnet-5-5",
+                    "max_output_tokens": 1024,
                 }
             ]
         },
@@ -480,7 +482,10 @@ class QueryRequest(BaseModel):
     filters: SearchFilters | None = None
     model: str | None = Field(
         default=None,
-        description="LiteLLM model for the answer; must be in LLM_ALLOWED_MODELS. Default: LLM_MODEL",
+        description="LiteLLM model that writes the answer. Omit to use the server default (LLM_MODEL, "
+        "default `claude-sonnet-5-5`). Must be one of the server's LLM_ALLOWED_MODELS "
+        "(default: `claude-sonnet-5-5`, `claude-haiku-5-5`); other values return 422 model_not_allowed.",
+        examples=["claude-sonnet-5-5", "claude-haiku-5-5"],
     )
     max_output_tokens: int | None = Field(
         default=None, ge=1, le=8192, description="Answer length limit. Default: LLM_MAX_OUTPUT_TOKENS"

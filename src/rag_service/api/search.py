@@ -1,6 +1,8 @@
 """Search and query (retrieval + LLM answer) API."""
 
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Body
 
 from rag_service.api.deps import DatasetDep, ModelAPIKey, Session, State
 from rag_service.api.docs import errors
@@ -47,7 +49,9 @@ async def search(
     summary="Ask a question (retrieval + LLM answer)",
     description="Retrieves the most relevant chunks like /search, then asks the LLM (via LiteLLM) to "
     "answer only from them, citing sources as [n]. `X-Model-API-Key` is always required because the "
-    "LLM call needs it. If nothing is retrieved, the LLM is not called and `answer` is null.",
+    "LLM call needs it. Pick the answering model with `model` (default `claude-sonnet-5-5`; allowed "
+    "by default: `claude-sonnet-5-5`, `claude-haiku-5-5`). If nothing is retrieved, the LLM is not "
+    "called and `answer` is null.",
     responses=errors(
         {
             400: ["missing_model_api_key"],
@@ -60,7 +64,29 @@ async def search(
     ),
 )
 async def query(
-    body: QueryRequest,
+    body: Annotated[
+        QueryRequest,
+        Body(
+            openapi_examples={
+                "default_model": {
+                    "summary": "Use the server's default model",
+                    "value": {
+                        "query": "How can the agreement be terminated?",
+                        "top_k": 5,
+                        "filters": {"metadata": {"year": 2025}},
+                    },
+                },
+                "choose_model": {
+                    "summary": "Choose the model (faster, cheaper Haiku)",
+                    "value": {
+                        "query": "계약 해지 조건은?",
+                        "model": "claude-haiku-5-5",
+                        "max_output_tokens": 300,
+                    },
+                },
+            }
+        ),
+    ],
     ds: DatasetDep,
     state: State,
     session: Session,

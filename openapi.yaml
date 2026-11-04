@@ -1491,9 +1491,11 @@ paths:
       tags:
       - search
       summary: Ask a question (retrieval + LLM answer)
-      description: Retrieves the most relevant chunks like /search, then asks the LLM (via LiteLLM) to
+      description: 'Retrieves the most relevant chunks like /search, then asks the LLM (via LiteLLM) to
         answer only from them, citing sources as [n]. `X-Model-API-Key` is always required because the
-        LLM call needs it. If nothing is retrieved, the LLM is not called and `answer` is null.
+        LLM call needs it. Pick the answering model with `model` (default `claude-sonnet-5-5`; allowed
+        by default: `claude-sonnet-5-5`, `claude-haiku-5-5`). If nothing is retrieved, the LLM is not
+        called and `answer` is null.'
       operationId: query
       parameters:
       - name: dataset_id
@@ -1519,6 +1521,21 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/QueryRequest'
+            examples:
+              default_model:
+                summary: Use the server's default model
+                value:
+                  query: How can the agreement be terminated?
+                  top_k: 5
+                  filters:
+                    metadata:
+                      year: 2025
+              choose_model:
+                summary: Choose the model (faster, cheaper Haiku)
+                value:
+                  query: 계약 해지 조건은?
+                  model: claude-haiku-5-5
+                  max_output_tokens: 300
       responses:
         '200':
           description: Successful Response
@@ -2422,8 +2439,11 @@ components:
         model:
           type: string
           title: Model
-          description: 'LiteLLM model for the answer; must be in LLM_ALLOWED_MODELS. Default: LLM_MODEL'
+          description: 'LiteLLM model that writes the answer. Omit to use the server default (LLM_MODEL,
+            default `claude-sonnet-5-5`). Must be one of the server''s LLM_ALLOWED_MODELS (default: `claude-sonnet-5-5`,
+            `claude-haiku-5-5`); other values return 422 model_not_allowed.'
           nullable: true
+          example: claude-sonnet-5-5
         max_output_tokens:
           type: integer
           maximum: 8192.0
@@ -2440,6 +2460,8 @@ components:
         filters:
           metadata:
             year: 2025
+        max_output_tokens: 1024
+        model: claude-sonnet-5-5
         query: How can the agreement be terminated?
         top_k: 5
     QueryResponse:
