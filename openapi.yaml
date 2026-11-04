@@ -1491,11 +1491,18 @@ paths:
       tags:
       - search
       summary: Ask a question (retrieval + LLM answer)
-      description: Retrieves the most relevant chunks like /search, then asks the LLM (via LiteLLM) to
+      description: 'Retrieves the most relevant chunks like /search, then asks the LLM (via LiteLLM) to
         answer only from them, citing sources as [n]. `X-Model-API-Key` is always required because the
         LLM call needs it. Pick the answering model with `model` (any LiteLLM model name; default `claude-sonnet-5-5`).
-        An unknown model returns LiteLLM's error as 502 upstream_error. If nothing is retrieved, the LLM
-        is not called and `answer` is null.
+        An unknown model returns LiteLLM''s error as 502 upstream_error. If nothing is retrieved, the
+        LLM is not called and `answer` is null.
+
+
+        With `"stream": true` the response is `text/event-stream` (Server-Sent Events): `sources` (QueryStreamSources),
+        then `delta` events (QueryStreamDelta) with answer text, then `done` (QueryStreamDone). Errors
+        before streaming starts (validation, key, retrieval, the LLM rejecting the request) are normal
+        JSON error responses; an error after streaming started is sent as an `error` event with the usual
+        `{"error": {"code", "message"}}` body.'
       operationId: query
       parameters:
       - name: dataset_id
@@ -1530,6 +1537,11 @@ paths:
                   filters:
                     metadata:
                       year: 2025
+              stream:
+                summary: Stream the answer (Server-Sent Events)
+                value:
+                  query: How can the agreement be terminated?
+                  stream: true
               choose_model:
                 summary: Choose the model (faster, cheaper Haiku)
                 value:
@@ -1538,11 +1550,41 @@ paths:
                   max_output_tokens: 300
       responses:
         '200':
-          description: Successful Response
+          description: The answer (JSON), or Server-Sent Events when `stream` is true
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/QueryResponse'
+            text/event-stream:
+              schema:
+                type: string
+              example: 'event: sources
+
+                data: {"query": "How can the agreement be terminated?", "sources": [{"id": 1, "score":
+                0.694, "text": "## Article 5. Termination\n\nEither party may terminate with 30 days written
+                notice.", "document_id": "bbd713912b614848a8f0def3f73aa304", "filename": "contract.pdf",
+                "page": 2, "section_path": ["Article 5. Termination"], "chunk_index": 1, "metadata": {"year":
+                2025}}]}
+
+
+                event: delta
+
+                data: {"text": "Either party may terminate"}
+
+
+                event: delta
+
+                data: {"text": " with 30 days written notice [1]."}
+
+
+                event: done
+
+                data: {"answer": "Either party may terminate with 30 days written notice [1].", "model":
+                "claude-sonnet-5-5", "citations": [1], "usage": {"input_tokens": 412, "output_tokens":
+                15}}
+
+
+                '
         '400':
           description: 'Bad request. Error codes: `missing_model_api_key`'
           content:
@@ -2445,6 +2487,12 @@ components:
           title: Max Output Tokens
           description: 'Answer length limit. Default: LLM_MAX_OUTPUT_TOKENS'
           nullable: true
+        stream:
+          type: boolean
+          title: Stream
+          description: 'Stream the answer as Server-Sent Events (text/event-stream): a `sources` event,
+            `delta` events with answer text, then `done` (or `error`).'
+          default: false
       additionalProperties: false
       type: object
       required:
@@ -2577,6 +2625,60 @@ components:
       - metadata
       - id
       title: QuerySource
+    QueryStreamDelta:
+      description: '`event: delta` — the next piece of answer text.'
+      properties:
+        text:
+          title: Text
+          type: string
+      required:
+      - text
+      title: QueryStreamDelta
+      type: object
+    QueryStreamDone:
+      description: '`event: done` — sent last on success.'
+      properties:
+        answer:
+          type: string
+          description: Full answer (all deltas joined); null if no sources
+          title: Answer
+          nullable: true
+        model:
+          type: string
+          title: Model
+          nullable: true
+        citations:
+          items:
+            type: integer
+          title: Citations
+          type: array
+        usage:
+          nullable: true
+          allOf:
+          - $ref: '#/components/schemas/TokenUsage'
+      required:
+      - answer
+      - model
+      - citations
+      - usage
+      title: QueryStreamDone
+      type: object
+    QueryStreamSources:
+      description: '`event: sources` — sent first, before the LLM starts answering.'
+      properties:
+        query:
+          title: Query
+          type: string
+        sources:
+          items:
+            $ref: '#/components/schemas/QuerySource'
+          title: Sources
+          type: array
+      required:
+      - query
+      - sources
+      title: QueryStreamSources
+      type: object
     SearchFilters:
       properties:
         document_ids:

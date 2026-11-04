@@ -1,10 +1,12 @@
 """LLM construction for LiteLLM's OpenAI-compatible API.
 
 A new instance is built per request with the caller's key; keys are never put into LlamaIndex's
-global `Settings`. `reuse_client=False` makes each call open and close its own HTTP client, so
-per-request instances do not leak connections.
+global `Settings`. The caller passes its own httpx client and closes it when done: LlamaIndex
+does not close the OpenAI client after streaming, so this keeps per-request instances from
+leaking connections in both the streaming and non-streaming paths.
 """
 
+import httpx
 from llama_index.llms.openai_like import OpenAILike
 
 
@@ -16,6 +18,7 @@ def build_llm(
     max_output_tokens: int,
     timeout_s: float,
     context_window: int,
+    http_client: httpx.AsyncClient,
 ) -> OpenAILike:
     return OpenAILike(
         model=model,
@@ -28,5 +31,5 @@ def build_llm(
         temperature=0.1,
         timeout=timeout_s,
         max_retries=1,
-        reuse_client=False,
+        async_http_client=http_client,
     )

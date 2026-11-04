@@ -490,6 +490,11 @@ class QueryRequest(BaseModel):
     max_output_tokens: int | None = Field(
         default=None, ge=1, le=8192, description="Answer length limit. Default: LLM_MAX_OUTPUT_TOKENS"
     )
+    stream: bool = Field(
+        default=False,
+        description="Stream the answer as Server-Sent Events (text/event-stream): a `sources` event, "
+        "`delta` events with answer text, then `done` (or `error`).",
+    )
 
 
 class QuerySource(SearchResult):
@@ -538,3 +543,28 @@ class QueryResponse(BaseModel):
     citations: list[int] = Field(description="Source ids cited in the answer, in order of first use")
     sources: list[QuerySource] = Field(description="Retrieved chunks given to the LLM")
     usage: TokenUsage | None = Field(default=None, description="Token usage reported by LiteLLM")
+
+
+# ---------- query streaming (SSE event payloads) ----------
+
+
+class QueryStreamSources(BaseModel):
+    """`event: sources` — sent first, before the LLM starts answering."""
+
+    query: str
+    sources: list[QuerySource]
+
+
+class QueryStreamDelta(BaseModel):
+    """`event: delta` — the next piece of answer text."""
+
+    text: str
+
+
+class QueryStreamDone(BaseModel):
+    """`event: done` — sent last on success."""
+
+    answer: str | None = Field(description="Full answer (all deltas joined); null if no sources")
+    model: str | None
+    citations: list[int]
+    usage: TokenUsage | None

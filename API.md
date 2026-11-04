@@ -946,6 +946,7 @@ Request body:
 | `filters` | object | no | | Same as [search filters](#search-a-dataset) (`document_ids`, `metadata`). |
 | `model` | string | no | `LLM_MODEL` (`claude-sonnet-5-5`) | Any model name registered in LiteLLM, passed as-is (e.g. `claude-haiku-5-5`). An unknown model returns LiteLLM's error as `502 upstream_error`. |
 | `max_output_tokens` | integer | no | `LLM_MAX_OUTPUT_TOKENS` (1024) | 1–8192. |
+| `stream` | boolean | no | `false` | Stream the answer as Server-Sent Events. See [Streaming](#streaming-the-answer). |
 
 ```bash
 curl -s -X POST $B/datasets/52967db904d44a09b33f88b3c9f64a6a/query \
@@ -1022,6 +1023,89 @@ Errors:
 ```json
 {"error": {"code": "upstream_auth_failed", "message": "model provider rejected the API key"}}
 ```
+
+#### Streaming the answer
+
+With `"stream": true`, `/query` answers with `Content-Type: text/event-stream` (Server-Sent Events) and sends the answer as the LLM writes it.
+
+Events, in order:
+
+| Event | `data` | When |
+|-------|--------|------|
+| `sources` | `{"query", "sources": [QuerySource...]}` | First, right after retrieval. Lets clients show sources before the answer arrives. |
+| `delta` | `{"text": "..."}` | Zero or more times: the next piece of answer text. Join all `text` values for the full answer. |
+| `done` | `{"answer", "model", "citations", "usage"}` | Last, on success. `answer` is the full text; `citations` are the source ids it cites. |
+| `error` | `{"error": {"code", "message"}}` | Instead of `done`, if the LLM fails after streaming has started. The stream then ends. |
+
+Each event is one `event:` line and one `data:` line (JSON on a single line), followed by a blank line. The OpenAPI spec documents the payloads as `QueryStreamSources`, `QueryStreamDelta`, and `QueryStreamDone`.
+
+Errors that happen **before** streaming starts — validation, missing key, retrieval/embedding errors, and the LLM rejecting the request (bad key, unknown model, gateway unreachable) — are normal JSON error responses with the status codes listed above, not events. When nothing is retrieved, the stream is `sources` with an empty list followed by `done` with `answer: null`, and the LLM is not called.
+
+```bash
+curl -sN -X POST $B/datasets/$DS/query \
+  -H 'content-type: application/json' -H "X-Model-API-Key: $KEY" \
+  -d '{"query": "How can the agreement be terminated?", "stream": true}'
+```
+
+```
+event: sources
+data: {"query": "How can the agreement be terminated?", "sources": [{"id": 1, "score": 0.694, "text": "## Article 5. Termination\n\nEither party may terminate with 30 days written notice.", "document_id": "bbd713912b614848a8f0def3f73aa304", "filename": "contract.pdf", "page": 2, "section_path": ["Article 5. Termination"], "chunk_index": 1, "metadata": {"year": 2025}}]}
+
+event: delta
+data: {"text": "Either party may terminate"}
+
+event: delta
+data: {"text": " with 30 days written notice [1]."}
+
+event: done
+data: {"answer": "Either party may terminate with 30 days written notice [1].", "model": "claude-sonnet-5-5", "citations": [1], "usage": {"input_tokens": 412, "output_tokens": 15}}
+```
+
+Consuming the stream (browsers' `EventSource` only supports GET, so use `fetch`):
+
+```js
+const res = await fetch(`${B}/datasets/${ds}/query`, {
+  method: "POST",
+  headers: {"content-type": "application/json", "X-Model-API-Key": key},
+  body: JSON.stringify({query, stream: true}),
+});
+if (!res.ok) throw (await res.json()).error;           // errors before streaming are JSON
+const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+let buf = "";
+for (;;) {
+  const {value, done} = await reader.read();
+  if (done) break;
+  buf += value;
+  let i;
+  while ((i = buf.indexOf("\n\n")) >= 0) {
+    const block = buf.slice(0, i); buf = buf.slice(i + 2);
+    const event = block.match(/^event: (.*)$/m)[1];
+    const data = JSON.parse(block.match(/^data: (.*)$/m)[1]);
+    if (event === "delta") render(data.text);
+    else if (event === "sources") showSources(data.sources);
+    else if (event === "done") finish(data);
+    else if (event === "error") fail(data.error);
+  }
+}
+```
+
+Python (`httpx`):
+
+```python
+with httpx.stream("POST", f"{B}/datasets/{ds}/query", headers={"X-Model-API-Key": key},
+                  json={"query": q, "stream": True}, timeout=None) as r:
+    r.raise_for_status()
+    event = None
+    for line in r.iter_lines():
+        if line.startswith("event: "):
+            event = line[7:]
+        elif line.startswith("data: "):
+            data = json.loads(line[6:])
+            if event == "delta":
+                print(data["text"], end="", flush=True)
+```
+
+If a reverse proxy sits in front of the service, make sure it does not buffer `text/event-stream` responses (the service sends `X-Accel-Buffering: no` and `Cache-Control: no-cache`).
 
 ---
 

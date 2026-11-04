@@ -32,6 +32,9 @@ def upstream_api_error(e: Exception, timeout_s: float | None = None) -> APIError
             "upstream_error",
             f"model gateway returned HTTP {e.status_code}: {_upstream_message(e)}",
         )
+    if isinstance(e, openai.APIError):
+        # e.g. an error event inside a streamed response
+        return APIError(502, "upstream_error", f"model gateway error: {redact(str(e.message))[:300]}")
     return None
 
 

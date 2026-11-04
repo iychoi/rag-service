@@ -11,7 +11,15 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 
-from rag_service.models.schemas import ErrorResponse
+from rag_service.models.schemas import (
+    ErrorResponse,
+    QueryStreamDelta,
+    QueryStreamDone,
+    QueryStreamSources,
+)
+
+# Models that are not response bodies but are documented as components (SSE event payloads)
+_EXTRA_COMPONENTS = (QueryStreamSources, QueryStreamDelta, QueryStreamDone)
 
 API_DESCRIPTION = """\
 REST API of rag-service: manage documents in **datasets**, index them with a selectable parser
@@ -140,6 +148,11 @@ def install_openapi(app: FastAPI) -> None:
                         }
                     }
         components = schema.get("components", {}).get("schemas", {})
+        for model in _EXTRA_COMPONENTS:
+            extra = model.model_json_schema(ref_template="#/components/schemas/{model}")
+            for name, sub in extra.pop("$defs", {}).items():
+                components.setdefault(name, sub)
+            components[model.__name__] = extra
         components.pop("HTTPValidationError", None)
         components.pop("ValidationError", None)
         schema = _to_openapi_30(_rename_schemas(schema))
