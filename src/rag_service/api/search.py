@@ -1,22 +1,15 @@
-"""Search API."""
-
-import re
+"""Search and query (retrieval + LLM answer) API."""
 
 from fastapi import APIRouter
-from sqlmodel import col, select
 
 from rag_service.api.deps import DatasetDep, ModelAPIKey, Session, State
-from rag_service.errors import APIError
 from rag_service.api.docs import errors
-from rag_service.models.schemas import SearchRequest, SearchResponse, SearchResult
-from rag_service.models.tables import Document
-from rag_service.providers.embeddings import build_embedding
-from rag_service.services.jobs import require_api_key_if_needed
+from rag_service.errors import APIError
+from rag_service.models.schemas import QueryRequest, QueryResponse, SearchRequest, SearchResponse
+from rag_service.services.answering import extract_citations, generate_answer, number_sources
+from rag_service.services.retrieval import retrieve, validate_retrieval_request
 
 router = APIRouter(tags=["search"])
-
-_FILTER_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$")
-_ID = re.compile(r"^[0-9a-f]{32}$")
 
 
 @router.post(
@@ -41,62 +34,73 @@ async def search(
     session: Session,
     api_key: ModelAPIKey,
 ) -> SearchResponse:
-    if body.top_k > state.settings.max_top_k:
-        raise APIError(422, "top_k_too_large", f"top_k must be <= {state.settings.max_top_k}")
-    filters = body.filters
-    document_ids = filters.document_ids if filters else None
-    metadata = filters.metadata if filters else None
-    if document_ids is not None:
-        bad = [d for d in document_ids if not _ID.match(d)]
-        if bad:
-            raise APIError(422, "invalid_filter", f"invalid document ids: {bad[:5]}")
-        if not document_ids:
-            return SearchResponse(query=body.query, results=[])
-    for key in metadata or {}:
-        if not _FILTER_KEY.match(key) or key.startswith("_"):
-            raise APIError(422, "invalid_filter", f"invalid metadata filter key '{key}'")
-
-    require_api_key_if_needed(state, ds, api_key)
-    entry = state.catalog.get(ds.embedding_model_id)
-    assert entry is not None  # checked by require_api_key_if_needed
-    embed_model = build_embedding(entry, api_key)
-    query_vec = await embed_model.aget_query_embedding(body.query)
-
-    result = await state.vectors.query(
-        ds, query_vec, body.top_k, document_ids=document_ids, metadata=metadata
-    )
-    nodes = result.nodes or []
-    sims = result.similarities or [0.0] * len(nodes)
-
-    # Join with current document rows (drops orphan vectors left by in-flight deletes)
-    doc_ids = {n.ref_doc_id for n in nodes if n.ref_doc_id}
-    docs = {
-        d.id: d
-        for d in (
-            await session.exec(
-                select(Document).where(
-                    Document.dataset_id == ds.id, col(Document.id).in_(list(doc_ids))
-                )
-            )
-        ).all()
-    } if doc_ids else {}
-
-    results: list[SearchResult] = []
-    for node, score in zip(nodes, sims, strict=True):
-        doc = docs.get(node.ref_doc_id or "")
-        if doc is None:
-            continue
-        md = node.metadata
-        results.append(
-            SearchResult(
-                score=float(score),
-                text=node.get_content(),
-                document_id=doc.id,
-                filename=doc.filename,
-                page=md.get("page"),
-                section_path=list(md.get("section_path") or []),
-                chunk_index=md.get("chunk_index"),
-                metadata=doc.meta,
-            )
-        )
+    validate_retrieval_request(state, body.top_k, body.filters)
+    results = await retrieve(state, session, ds, body.query, body.top_k, body.filters, api_key)
     return SearchResponse(query=body.query, results=results)
+
+
+@router.post(
+    "/datasets/{dataset_id}/query",
+    response_model=QueryResponse,
+    summary="Ask a question (retrieval + LLM answer)",
+    description="Retrieves the most relevant chunks like /search, then asks the LLM (via LiteLLM) to "
+    "answer only from them, citing sources as [n]. `X-Model-API-Key` is always required because the "
+    "LLM call needs it. If nothing is retrieved, the LLM is not called and `answer` is null.",
+    responses=errors(
+        {
+            400: ["missing_model_api_key"],
+            404: ["dataset_not_found"],
+            409: ["embedding_model_unavailable"],
+            422: ["validation_error", "top_k_too_large", "invalid_filter", "model_not_allowed"],
+            502: ["upstream_auth_failed", "llm_error", "llm_unreachable"],
+            503: ["llm_not_configured"],
+            504: ["llm_timeout"],
+        }
+    ),
+)
+async def query(
+    body: QueryRequest,
+    ds: DatasetDep,
+    state: State,
+    session: Session,
+    api_key: ModelAPIKey,
+) -> QueryResponse:
+    settings = state.settings
+    if not settings.litellm_base_url:
+        raise APIError(503, "llm_not_configured", "LITELLM_BASE_URL is not configured")
+    model = body.model or settings.llm_model
+    if model not in settings.llm_allowed_model_list:
+        raise APIError(
+            422,
+            "model_not_allowed",
+            f"model '{model}' is not allowed (allowed: {settings.llm_allowed_model_list})",
+        )
+    validate_retrieval_request(state, body.top_k, body.filters)
+    if not api_key:
+        raise APIError(400, "missing_model_api_key", "X-Model-API-Key header is required")
+
+    results = await retrieve(state, session, ds, body.query, body.top_k, body.filters, api_key)
+    sources = number_sources(results)
+    if not sources:
+        return QueryResponse(
+            query=body.query, answer=None, model=None, citations=[], sources=[], usage=None
+        )
+
+    answer, usage = await generate_answer(
+        query=body.query,
+        sources=sources,
+        base_url=settings.litellm_base_url,
+        model=model,
+        api_key=api_key,
+        max_output_tokens=body.max_output_tokens or settings.llm_max_output_tokens,
+        timeout_s=settings.llm_timeout_s,
+        context_window=settings.llm_context_window,
+    )
+    return QueryResponse(
+        query=body.query,
+        answer=answer,
+        model=model,
+        citations=extract_citations(answer, len(sources)),
+        sources=sources,
+        usage=usage,
+    )

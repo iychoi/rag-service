@@ -31,9 +31,23 @@ class Settings(BaseSettings):
     max_upload_mb: int = 100
     max_top_k: int = 50
 
+    # LiteLLM proxy (OpenAI-compatible). Required for /query; the key comes from each request.
+    litellm_base_url: str | None = None
+    llm_model: str = "claude-sonnet-5-5"
+    # Comma-separated models a /query request may pick with `model`
+    llm_allowed_models: str = "claude-sonnet-5-5,claude-haiku-5-5"
+    llm_timeout_s: float = 120.0
+    llm_max_output_tokens: int = 1024
+    llm_context_window: int = 200_000
+
     @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_mb * 1024 * 1024
+
+    @property
+    def llm_allowed_model_list(self) -> list[str]:
+        models = [m.strip() for m in self.llm_allowed_models.split(",") if m.strip()]
+        return models if self.llm_model in models else [self.llm_model, *models]
 
 
 @lru_cache

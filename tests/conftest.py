@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = Path(__file__).parent / "fixtures"
 DOCLING_TEST_URL = "http://docling.test"
 MINERU_TEST_URL = "http://mineru.test"
+LITELLM_TEST_URL = "http://litellm.test/v1"
 
 
 @pytest.fixture(scope="session")
@@ -39,6 +40,7 @@ def settings(database_url: str, tmp_path_factory: pytest.TempPathFactory) -> Set
         docling_poll_interval_s=0.01,
         mineru_url=MINERU_TEST_URL,
         mineru_poll_interval_s=0.01,
+        litellm_base_url=LITELLM_TEST_URL,
         job_workers=2,
     )
 

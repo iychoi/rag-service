@@ -34,7 +34,7 @@ TAGS: list[dict[str, str]] = [
     {"name": "datasets", "description": "Datasets (unit of access control) and the embedding model catalog."},
     {"name": "documents", "description": "Upload, list, download, and delete documents in a dataset."},
     {"name": "indexing", "description": "Indexing jobs (parse → chunk → embed → store) and parser status."},
-    {"name": "search", "description": "Vector search within one dataset."},
+    {"name": "search", "description": "Vector search and question answering within one dataset."},
     {"name": "ops", "description": "Health and readiness probes."},
 ]
 
@@ -44,7 +44,9 @@ _STATUS_TEXT = {
     409: "Conflict",
     413: "Payload too large",
     422: "Invalid request",
+    502: "Bad gateway (LLM/LiteLLM error)",
     503: "Service unavailable",
+    504: "Gateway timeout (LLM)",
 }
 
 _EXAMPLE_MESSAGES = {
@@ -73,6 +75,12 @@ _EXAMPLE_MESSAGES = {
     "top_k_too_large": "top_k must be <= 50",
     "parser_unavailable": "parser 'docling' is unavailable",
     "db_unavailable": "database is not reachable",
+    "model_not_allowed": "model 'gpt-x' is not allowed (allowed: ['claude-sonnet-5-5', 'claude-haiku-5-5'])",
+    "upstream_auth_failed": "model provider rejected the API key",
+    "llm_error": "LLM gateway returned HTTP 400: model not found",
+    "llm_unreachable": "could not reach the LLM gateway",
+    "llm_not_configured": "LITELLM_BASE_URL is not configured",
+    "llm_timeout": "LLM did not respond within 120s",
 }
 
 

@@ -423,3 +423,82 @@ class ParserHealthOut(BaseModel):
     detail: str | None = None
     version: str | None = None
     supported_extensions: list[str]
+
+
+# ---------- query (retrieval + LLM answer) ----------
+
+
+class QueryRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "query": "How can the agreement be terminated?",
+                    "top_k": 5,
+                    "filters": {"metadata": {"year": 2025}},
+                }
+            ]
+        },
+    )
+
+    query: str = Field(min_length=1, max_length=8000)
+    top_k: int = Field(
+        default=5, ge=1, description="Chunks retrieved as sources; at most MAX_TOP_K (default 50)"
+    )
+    filters: SearchFilters | None = None
+    model: str | None = Field(
+        default=None,
+        description="LiteLLM model for the answer; must be in LLM_ALLOWED_MODELS. Default: LLM_MODEL",
+    )
+    max_output_tokens: int | None = Field(
+        default=None, ge=1, le=8192, description="Answer length limit. Default: LLM_MAX_OUTPUT_TOKENS"
+    )
+
+
+class QuerySource(SearchResult):
+    id: int = Field(description="Reference number used for citations in the answer, e.g. [1]")
+
+
+class TokenUsage(BaseModel):
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+
+
+class QueryResponse(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "query": "How can the agreement be terminated?",
+                    "answer": "Either party may terminate the agreement with 30 days written notice [1].",
+                    "model": "claude-sonnet-5-5",
+                    "citations": [1],
+                    "sources": [
+                        {
+                            "id": 1,
+                            "score": 0.694,
+                            "text": "## Article 5. Termination\n\nEither party may terminate with 30 days written notice.",
+                            "document_id": DOC_ID,
+                            "filename": "contract.pdf",
+                            "page": 2,
+                            "section_path": ["Article 5. Termination"],
+                            "chunk_index": 1,
+                            "metadata": {"year": 2025, "category": "contract"},
+                        }
+                    ],
+                    "usage": {"input_tokens": 412, "output_tokens": 23},
+                }
+            ]
+        }
+    )
+
+    query: str
+    answer: str | None = Field(
+        description="Answer grounded in the sources, with [n] citations. "
+        "null when no sources were found (the LLM is not called)."
+    )
+    model: str | None = Field(description="Model that produced the answer; null if not called")
+    citations: list[int] = Field(description="Source ids cited in the answer, in order of first use")
+    sources: list[QuerySource] = Field(description="Retrieved chunks given to the LLM")
+    usage: TokenUsage | None = Field(default=None, description="Token usage reported by LiteLLM")

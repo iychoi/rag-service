@@ -1392,6 +1392,157 @@ paths:
                       message: invalid metadata filter key 'a b'
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /v1/datasets/{dataset_id}/query:
+    post:
+      tags:
+      - search
+      summary: Ask a question (retrieval + LLM answer)
+      description: Retrieves the most relevant chunks like /search, then asks the LLM (via LiteLLM) to
+        answer only from them, citing sources as [n]. `X-Model-API-Key` is always required because the
+        LLM call needs it. If nothing is retrieved, the LLM is not called and `answer` is null.
+      operationId: query
+      parameters:
+      - name: dataset_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Dataset Id
+      - name: X-Model-API-Key
+        in: header
+        required: false
+        schema:
+          type: string
+          description: LiteLLM key for embedding/LLM calls. Required when the dataset's embedding model
+            has requires_api_key=true. Never stored.
+          title: X-Model-Api-Key
+          nullable: true
+        description: LiteLLM key for embedding/LLM calls. Required when the dataset's embedding model
+          has requires_api_key=true. Never stored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResponse'
+        '400':
+          description: 'Bad request. Error codes: `missing_model_api_key`'
+          content:
+            application/json:
+              examples:
+                missing_model_api_key:
+                  value:
+                    error:
+                      code: missing_model_api_key
+                      message: X-Model-API-Key header is required
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 'Not found. Error codes: `dataset_not_found`'
+          content:
+            application/json:
+              examples:
+                dataset_not_found:
+                  value:
+                    error:
+                      code: dataset_not_found
+                      message: dataset '52967db904d44a09b33f88b3c9f64a6a' not found
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 'Conflict. Error codes: `embedding_model_unavailable`'
+          content:
+            application/json:
+              examples:
+                embedding_model_unavailable:
+                  value:
+                    error:
+                      code: embedding_model_unavailable
+                      message: embedding model 'hash-dev' is no longer in the catalog
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: 'Invalid request. Error codes: `validation_error`, `top_k_too_large`, `invalid_filter`,
+            `model_not_allowed`'
+          content:
+            application/json:
+              examples:
+                validation_error:
+                  value:
+                    error:
+                      code: validation_error
+                      message: 'query: String should have at least 1 character'
+                top_k_too_large:
+                  value:
+                    error:
+                      code: top_k_too_large
+                      message: top_k must be <= 50
+                invalid_filter:
+                  value:
+                    error:
+                      code: invalid_filter
+                      message: invalid metadata filter key 'a b'
+                model_not_allowed:
+                  value:
+                    error:
+                      code: model_not_allowed
+                      message: 'model ''gpt-x'' is not allowed (allowed: [''claude-sonnet-5-5'', ''claude-haiku-5-5''])'
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: 'Bad gateway (LLM/LiteLLM error). Error codes: `upstream_auth_failed`, `llm_error`,
+            `llm_unreachable`'
+          content:
+            application/json:
+              examples:
+                upstream_auth_failed:
+                  value:
+                    error:
+                      code: upstream_auth_failed
+                      message: model provider rejected the API key
+                llm_error:
+                  value:
+                    error:
+                      code: llm_error
+                      message: 'LLM gateway returned HTTP 400: model not found'
+                llm_unreachable:
+                  value:
+                    error:
+                      code: llm_unreachable
+                      message: could not reach the LLM gateway
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 'Service unavailable. Error codes: `llm_not_configured`'
+          content:
+            application/json:
+              examples:
+                llm_not_configured:
+                  value:
+                    error:
+                      code: llm_not_configured
+                      message: LITELLM_BASE_URL is not configured
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '504':
+          description: 'Gateway timeout (LLM). Error codes: `llm_timeout`'
+          content:
+            application/json:
+              examples:
+                llm_timeout:
+                  value:
+                    error:
+                      code: llm_timeout
+                      message: LLM did not respond within 120s
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /healthz:
     get:
       tags:
@@ -2130,6 +2281,165 @@ components:
         - .pdf
         - .png
         version: 4.1.7
+    QueryRequest:
+      properties:
+        query:
+          type: string
+          maxLength: 8000
+          minLength: 1
+          title: Query
+        top_k:
+          type: integer
+          minimum: 1.0
+          title: Top K
+          description: Chunks retrieved as sources; at most MAX_TOP_K (default 50)
+          default: 5
+        filters:
+          nullable: true
+          allOf:
+          - $ref: '#/components/schemas/SearchFilters'
+        model:
+          type: string
+          title: Model
+          description: 'LiteLLM model for the answer; must be in LLM_ALLOWED_MODELS. Default: LLM_MODEL'
+          nullable: true
+        max_output_tokens:
+          type: integer
+          maximum: 8192.0
+          minimum: 1.0
+          title: Max Output Tokens
+          description: 'Answer length limit. Default: LLM_MAX_OUTPUT_TOKENS'
+          nullable: true
+      additionalProperties: false
+      type: object
+      required:
+      - query
+      title: QueryRequest
+      example:
+        filters:
+          metadata:
+            year: 2025
+        query: How can the agreement be terminated?
+        top_k: 5
+    QueryResponse:
+      properties:
+        query:
+          type: string
+          title: Query
+        answer:
+          type: string
+          title: Answer
+          description: Answer grounded in the sources, with [n] citations. null when no sources were found
+            (the LLM is not called).
+          nullable: true
+        model:
+          type: string
+          title: Model
+          description: Model that produced the answer; null if not called
+          nullable: true
+        citations:
+          items:
+            type: integer
+          type: array
+          title: Citations
+          description: Source ids cited in the answer, in order of first use
+        sources:
+          items:
+            $ref: '#/components/schemas/QuerySource'
+          type: array
+          title: Sources
+          description: Retrieved chunks given to the LLM
+        usage:
+          description: Token usage reported by LiteLLM
+          nullable: true
+          allOf:
+          - $ref: '#/components/schemas/TokenUsage'
+      type: object
+      required:
+      - query
+      - answer
+      - model
+      - citations
+      - sources
+      title: QueryResponse
+      example:
+        answer: Either party may terminate the agreement with 30 days written notice [1].
+        citations:
+        - 1
+        model: claude-sonnet-5-5
+        query: How can the agreement be terminated?
+        sources:
+        - chunk_index: 1
+          document_id: bbd713912b614848a8f0def3f73aa304
+          filename: contract.pdf
+          id: 1
+          metadata:
+            category: contract
+            year: 2025
+          page: 2
+          score: 0.694
+          section_path:
+          - Article 5. Termination
+          text: '## Article 5. Termination
+
+
+            Either party may terminate with 30 days written notice.'
+        usage:
+          input_tokens: 412
+          output_tokens: 23
+    QuerySource:
+      properties:
+        score:
+          type: number
+          title: Score
+          description: Cosine similarity (higher is closer)
+        text:
+          type: string
+          title: Text
+          description: Chunk text (markdown)
+        document_id:
+          type: string
+          title: Document Id
+        filename:
+          type: string
+          title: Filename
+          nullable: true
+        page:
+          type: integer
+          title: Page
+          description: 1-based page number when the parser reports pages
+          nullable: true
+        section_path:
+          items:
+            type: string
+          type: array
+          title: Section Path
+          description: Heading path of the chunk
+        chunk_index:
+          type: integer
+          title: Chunk Index
+          nullable: true
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Current document metadata
+        id:
+          type: integer
+          title: Id
+          description: Reference number used for citations in the answer, e.g. [1]
+      type: object
+      required:
+      - score
+      - text
+      - document_id
+      - filename
+      - page
+      - section_path
+      - chunk_index
+      - metadata
+      - id
+      title: QuerySource
     SearchFilters:
       properties:
         document_ids:
@@ -2261,6 +2571,18 @@ components:
       - chunk_index
       - metadata
       title: SearchResult
+    TokenUsage:
+      properties:
+        input_tokens:
+          type: integer
+          title: Input Tokens
+          nullable: true
+        output_tokens:
+          type: integer
+          title: Output Tokens
+          nullable: true
+      type: object
+      title: TokenUsage
 tags:
 - name: datasets
   description: Datasets (unit of access control) and the embedding model catalog.
@@ -2269,6 +2591,6 @@ tags:
 - name: indexing
   description: Indexing jobs (parse → chunk → embed → store) and parser status.
 - name: search
-  description: Vector search within one dataset.
+  description: Vector search and question answering within one dataset.
 - name: ops
   description: Health and readiness probes.

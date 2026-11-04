@@ -2,7 +2,7 @@
 
 Remaining work, grouped by phase. Each item carries the context needed to pick it up.
 
-Current state: dataset/document management, indexing jobs (Docling and MinerU on CPU), per-dataset pgvector tables, and search all work end to end. Embeddings use the development-only `hash-dev` model, so search is lexical, not semantic, until the LiteLLM integration lands.
+Current state: dataset/document management, indexing jobs (Docling and MinerU on CPU), per-dataset pgvector tables, search, and `/query` (LLM answers with citations via LiteLLM) all work end to end. Embeddings use the development-only `hash-dev` model, so search is lexical, not semantic, until the LiteLLM integration lands.
 
 ---
 
@@ -10,7 +10,7 @@ Current state: dataset/document management, indexing jobs (Docling and MinerU on
 
 ### LiteLLM embedding provider
 - [ ] Implement the `litellm` provider in `src/rag_service/providers/embeddings.py` using LlamaIndex `OpenAILikeEmbedding` (`api_base=LITELLM_BASE_URL`, `model_name=<catalog model>`, `api_key=<X-Model-API-Key>`), registered in `PROVIDERS` with `requires_api_key=True`.
-- [ ] Add a `LITELLM_BASE_URL` setting (e.g. `http://litellm:4000/v1`).
+- [x] `LITELLM_BASE_URL` setting (added with `/query`; reuse it for embeddings).
 - [ ] Enable the commented-out entries in `config/embedding_models.yaml` once the models are registered in LiteLLM:
 
   | Catalog id | Bedrock model id | Dim | Max input | Asymmetric (`input_type`) |
@@ -20,7 +20,7 @@ Current state: dataset/document management, indexing jobs (Docling and MinerU on
   | `cohere-embed-multilingual-v3` | `cohere.embed-multilingual-v3` | 1024 | 512 tokens | yes — fallback if v4 is unavailable |
 
   Catalog `dim` must stay ≤ 2000 (pgvector HNSW limit on `vector`).
-- [ ] Map upstream auth failures without leaking the key: job error `model provider authentication failed`; search returns `502 upstream_auth_failed` (add to API.md, error helper, and `openapi.yaml`).
+- [ ] Map upstream auth failures without leaking the key: job error `model provider authentication failed`; search returns `502 upstream_auth_failed` (the code already exists for `/query`; reuse the mapping in `services/answering.py`).
 - [ ] Tests: mock LiteLLM's `/embeddings` endpoint with respx (key header forwarded, dimension mismatch → job fails with `dimension_mismatch`, missing key → `400 missing_model_api_key`).
 
 ### Blocked / to verify
@@ -33,15 +33,16 @@ Current state: dataset/document management, indexing jobs (Docling and MinerU on
 ## Phase 2 — Quality
 
 - [ ] **Cohere Embed v4 with `input_type`**: subclass `OpenAILikeEmbedding` to send `input_type=search_document` for documents and `search_query` for queries (values come from the catalog `input_type` field). Compare Korean retrieval quality against Titan V2 and decide the default.
-- [ ] **`POST /v1/datasets/{dataset_id}/query`**: retrieval + LLM answer with citations (chunk → document/page/section). LLM via LiteLLM using `OpenAILike(api_base=LITELLM_BASE_URL, api_key=<X-Model-API-Key>, model=..., is_chat_model=True)`. Never put keys into LlamaIndex global `Settings`.
-  - Settings: `LLM_MODEL=claude-sonnet-5-5` (answers), `LLM_FAST_MODEL=claude-haiku-5-5` (auxiliary tasks), `LLM_ALLOWED_MODELS` (per-request override allow-list).
+- [x] **`POST /v1/datasets/{dataset_id}/query`**: retrieval + LLM answer with `[n]` citations (`services/answering.py`, `providers/llms.py`). Mocked-LiteLLM tests only.
+  - Settings: `LITELLM_BASE_URL`, `LLM_MODEL=claude-sonnet-5-5`, `LLM_ALLOWED_MODELS`, `LLM_TIMEOUT_S`, `LLM_MAX_OUTPUT_TOKENS`.
   - Models currently in LiteLLM and their price per 1M tokens (input/output): `claude-sonnet-5-5` $2.20/$11.00, `claude-haiku-5-5` $0.11/$0.55, `claude-opus-5-5` $4.40/$22.00 (too costly as default).
-- [ ] **Query rewriting / contextual retrieval** with `claude-haiku-5-5` (e.g. add a short document-context summary to each chunk at indexing time).
+- [ ] **Verify `/query` against the real LiteLLM** (needs the LiteLLM base URL and a key): check the answer language, citation format, and token usage reporting with `claude-sonnet-5-5`.
+- [ ] **`/query` follow-ups**: streaming responses (SSE), and a prompt-size budget (today all `top_k` chunks are sent; with large chunks and `top_k` up to 50 this can get expensive).
+- [ ] **Query rewriting / contextual retrieval** with `claude-haiku-5-5`, e.g. add a short document-context summary to each chunk at indexing time (needs an `LLM_FAST_MODEL` setting).
 - [ ] **Structure-aware chunking**:
   - Docling: the DoclingDocument JSON is already cached as `raw.json` in the parse cache; use `DoclingNodeParser` (`llama-index-node-parser-docling`, needs only `docling-core`, no torch).
   - MinerU: `structured_content.json` (cached as `raw.json`) has per-page typed blocks with bboxes; use it to keep tables as single chunks and get exact page numbers.
 - [ ] **Hybrid search + reranking**: `PGVectorStore(hybrid_search=True)` uses PostgreSQL full-text search, whose default configs do not tokenize Korean; evaluate `pg_bigm` / `pgroonga` or a separate BM25 index. Evaluate a reranker (Bedrock rerank models via LiteLLM).
-- [ ] **`parse_only` flow**: parse without an API key first (CPU MinerU can take minutes), then embed later with the key. The parse cache already supports this; it needs an API and a job type.
 
 ---
 
