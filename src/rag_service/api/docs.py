@@ -76,7 +76,6 @@ _EXAMPLE_MESSAGES = {
     "top_k_too_large": "top_k must be <= 50",
     "parser_unavailable": "parser 'docling' is unavailable",
     "db_unavailable": "database is not reachable",
-    "model_not_allowed": "model 'gpt-x' is not allowed (allowed: ['claude-sonnet-5-5', 'claude-haiku-5-5'])",
     "upstream_auth_failed": "model provider rejected the API key",
     "upstream_error": "model gateway returned HTTP 429: rate limit exceeded",
     "upstream_unreachable": "could not reach the model gateway",

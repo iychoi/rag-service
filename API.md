@@ -944,7 +944,7 @@ Request body:
 | `query` | string | yes | | 1–8000 characters. |
 | `top_k` | integer | no | `5` | Number of chunks given to the LLM as sources; 1 to `MAX_TOP_K`. More sources mean more context but a larger (costlier) prompt. |
 | `filters` | object | no | | Same as [search filters](#search-a-dataset) (`document_ids`, `metadata`). |
-| `model` | string | no | `LLM_MODEL` (`claude-sonnet-5-5`) | Must be one of `LLM_ALLOWED_MODELS` (default `claude-sonnet-5-5`, `claude-haiku-5-5`). |
+| `model` | string | no | `LLM_MODEL` (`claude-sonnet-5-5`) | Any model name registered in LiteLLM, passed as-is (e.g. `claude-haiku-5-5`). An unknown model returns LiteLLM's error as `502 upstream_error`. |
 | `max_output_tokens` | integer | no | `LLM_MAX_OUTPUT_TOKENS` (1024) | 1–8192. |
 
 ```bash
@@ -1012,7 +1012,6 @@ Errors:
 | Status | Code | When |
 |--------|------|------|
 | 400 | `missing_model_api_key` | No `X-Model-API-Key`. |
-| 422 | `model_not_allowed` | `model` is not in `LLM_ALLOWED_MODELS`. |
 | 422 | `validation_error`, `top_k_too_large`, `invalid_filter` | As for search. |
 | 502 | `upstream_auth_failed` | LiteLLM rejected the key (401/403). |
 | 502 | `upstream_error` | LiteLLM returned another error (e.g. unknown model, rate limit). The upstream status and message are included, with key-like strings redacted. |
@@ -1152,7 +1151,6 @@ Used automatically for `.md`, `.markdown`, `.txt`. Takes no options.
 | 422 | `invalid_parser_options` | Unknown parser option or wrong value type. |
 | 422 | `invalid_filter` | Malformed `document_ids` or metadata filter key. |
 | 422 | `top_k_too_large` | `top_k` exceeds `MAX_TOP_K`. |
-| 422 | `model_not_allowed` | `/query` `model` is not in `LLM_ALLOWED_MODELS`. |
 | 502 | `upstream_auth_failed` | LiteLLM rejected the `X-Model-API-Key`. |
 | 502 | `upstream_error` | LiteLLM returned an error for an embedding or LLM call. |
 | 502 | `upstream_unreachable` | LiteLLM could not be reached. |

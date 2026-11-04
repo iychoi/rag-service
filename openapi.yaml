@@ -1491,11 +1491,11 @@ paths:
       tags:
       - search
       summary: Ask a question (retrieval + LLM answer)
-      description: 'Retrieves the most relevant chunks like /search, then asks the LLM (via LiteLLM) to
+      description: Retrieves the most relevant chunks like /search, then asks the LLM (via LiteLLM) to
         answer only from them, citing sources as [n]. `X-Model-API-Key` is always required because the
-        LLM call needs it. Pick the answering model with `model` (default `claude-sonnet-5-5`; allowed
-        by default: `claude-sonnet-5-5`, `claude-haiku-5-5`). If nothing is retrieved, the LLM is not
-        called and `answer` is null.'
+        LLM call needs it. Pick the answering model with `model` (any LiteLLM model name; default `claude-sonnet-5-5`).
+        An unknown model returns LiteLLM's error as 502 upstream_error. If nothing is retrieved, the LLM
+        is not called and `answer` is null.
       operationId: query
       parameters:
       - name: dataset_id
@@ -1568,8 +1568,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
-          description: 'Invalid request. Error codes: `validation_error`, `top_k_too_large`, `invalid_filter`,
-            `model_not_allowed`'
+          description: 'Invalid request. Error codes: `validation_error`, `top_k_too_large`, `invalid_filter`'
           content:
             application/json:
               examples:
@@ -1588,11 +1587,6 @@ paths:
                     error:
                       code: invalid_filter
                       message: invalid metadata filter key 'a b'
-                model_not_allowed:
-                  value:
-                    error:
-                      code: model_not_allowed
-                      message: 'model ''gpt-x'' is not allowed (allowed: [''claude-sonnet-5-5'', ''claude-haiku-5-5''])'
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '502':
@@ -2439,9 +2433,9 @@ components:
         model:
           type: string
           title: Model
-          description: 'LiteLLM model that writes the answer. Omit to use the server default (LLM_MODEL,
-            default `claude-sonnet-5-5`). Must be one of the server''s LLM_ALLOWED_MODELS (default: `claude-sonnet-5-5`,
-            `claude-haiku-5-5`); other values return 422 model_not_allowed.'
+          description: LiteLLM model that writes the answer, passed to LiteLLM as-is. Omit to use the
+            server default (LLM_MODEL, default `claude-sonnet-5-5`). A model LiteLLM does not know returns
+            its error as 502 upstream_error.
           nullable: true
           example: claude-sonnet-5-5
         max_output_tokens:

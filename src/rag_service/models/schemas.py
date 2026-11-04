@@ -482,9 +482,9 @@ class QueryRequest(BaseModel):
     filters: SearchFilters | None = None
     model: str | None = Field(
         default=None,
-        description="LiteLLM model that writes the answer. Omit to use the server default (LLM_MODEL, "
-        "default `claude-sonnet-5-5`). Must be one of the server's LLM_ALLOWED_MODELS "
-        "(default: `claude-sonnet-5-5`, `claude-haiku-5-5`); other values return 422 model_not_allowed.",
+        description="LiteLLM model that writes the answer, passed to LiteLLM as-is. Omit to use the "
+        "server default (LLM_MODEL, default `claude-sonnet-5-5`). A model LiteLLM does not know "
+        "returns its error as 502 upstream_error.",
         examples=["claude-sonnet-5-5", "claude-haiku-5-5"],
     )
     max_output_tokens: int | None = Field(

@@ -49,14 +49,14 @@ async def search(
     summary="Ask a question (retrieval + LLM answer)",
     description="Retrieves the most relevant chunks like /search, then asks the LLM (via LiteLLM) to "
     "answer only from them, citing sources as [n]. `X-Model-API-Key` is always required because the "
-    "LLM call needs it. Pick the answering model with `model` (default `claude-sonnet-5-5`; allowed "
-    "by default: `claude-sonnet-5-5`, `claude-haiku-5-5`). If nothing is retrieved, the LLM is not "
-    "called and `answer` is null.",
+    "LLM call needs it. Pick the answering model with `model` (any LiteLLM model name; default "
+    "`claude-sonnet-5-5`). An unknown model returns LiteLLM's error as 502 upstream_error. If nothing "
+    "is retrieved, the LLM is not called and `answer` is null.",
     responses=errors(
         {
             400: ["missing_model_api_key"],
             404: ["dataset_not_found"],
-            422: ["validation_error", "top_k_too_large", "invalid_filter", "model_not_allowed"],
+            422: ["validation_error", "top_k_too_large", "invalid_filter"],
             502: ["upstream_auth_failed", "upstream_error", "upstream_unreachable"],
             503: ["litellm_not_configured"],
             504: ["upstream_timeout"],
@@ -95,13 +95,7 @@ async def query(
     settings = state.settings
     if not settings.litellm_base_url:
         raise APIError(503, "litellm_not_configured", "LITELLM_BASE_URL is not configured")
-    model = body.model or settings.llm_model
-    if model not in settings.llm_allowed_model_list:
-        raise APIError(
-            422,
-            "model_not_allowed",
-            f"model '{model}' is not allowed (allowed: {settings.llm_allowed_model_list})",
-        )
+    model = body.model or settings.llm_model  # passed to LiteLLM as-is; its errors are returned
     validate_retrieval_request(state, body.top_k, body.filters)
     if not api_key:
         raise APIError(400, "missing_model_api_key", "X-Model-API-Key header is required")

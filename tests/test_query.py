@@ -100,12 +100,18 @@ async def test_query_answers_with_citations(client: httpx.AsyncClient, dataset: 
 
 async def test_query_model_selection(client: httpx.AsyncClient, dataset: dict) -> None:
     ds_id = await indexed_dataset(client, dataset)
-    r = await client.post(
-        f"/datasets/{ds_id}/query",
-        headers={"X-Model-API-Key": KEY},
-        json={"query": "해지", "model": "gpt-6-luna"},
-    )
-    assert r.status_code == 422 and r.json()["error"]["code"] == "model_not_allowed"
+    # Unknown models are not checked locally; LiteLLM's error is returned
+    with respx.mock() as router:
+        router.post(CHAT_URL).respond(
+            400, json={"error": {"message": "Invalid model name passed in model=claude-sonnet-9"}}
+        )
+        r = await client.post(
+            f"/datasets/{ds_id}/query",
+            headers={"X-Model-API-Key": KEY},
+            json={"query": "해지", "model": "claude-sonnet-9"},
+        )
+    assert r.status_code == 502 and r.json()["error"]["code"] == "upstream_error"
+    assert "claude-sonnet-9" in r.json()["error"]["message"]
 
     with respx.mock() as router:
         route = router.post(CHAT_URL).respond(json=chat_completion("ok [1]", "claude-haiku-5-5"))
