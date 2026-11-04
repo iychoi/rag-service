@@ -1,0 +1,29 @@
+# Embedding model catalog
+# Datasets pick one of the ids below via `embedding_model_id` at creation time.
+# Do not remove or change entries used by existing datasets (verified at server startup).
+
+# Development/tests: local hash embedding without external calls (no semantic search quality)
+- id: hash-dev
+  provider: hash
+  model: hash-ngram-v1
+  dim: 512
+  max_input_tokens: 8192
+  description: "Local n-gram hashing embedding for development and tests"
+
+# --- LiteLLM (Amazon Bedrock): enable once the litellm provider is implemented and the models are registered in LiteLLM ---
+# - id: titan-embed-v2
+#   provider: litellm
+#   model: titan-embed-v2               # model name registered in LiteLLM
+#   dim: 1024
+#   max_input_tokens: 8192
+#   description: "Amazon Titan Text Embeddings V2 (amazon.titan-embed-text-v2:0)"
+#
+# - id: cohere-embed-v4
+#   provider: litellm
+#   model: cohere-embed-v4
+#   dim: 1536
+#   max_input_tokens: 128000
+#   input_type:
+#     document: search_document
+#     query: search_query
+#   description: "Cohere Embed v4 on Bedrock (cohere.embed-v4:0)"

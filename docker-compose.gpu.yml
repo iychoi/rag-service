@@ -1,0 +1,41 @@
+# GPU override (untested template): docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+#
+# MinerU: rebuild with torch/vLLM and serve up to the standard tier (VLM).
+#   The PyPI torch/vllm wheels bundle the CUDA runtime, so the base image stays the same; only the NVIDIA runtime is needed.
+# Docling: switch to the CUDA image.
+#
+# To run parsers on a separate GPU node instead, start the parser containers on that node and
+# just change rag-api's MINERU_URL / DOCLING_URL.
+services:
+  mineru:
+    build:
+      args:
+        MINERU_EXTRAS: full
+        MINERU_MODEL_TIER: standard
+    image: rag-service-mineru:gpu
+    environment:
+      MINERU_TIER: standard
+      MINERU_API_CONCURRENCY: "4"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  docling:
+    image: ghcr.io/docling-project/docling-serve-cu128:v1.38.2
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  rag-api:
+    environment:
+      MINERU_TIER: standard
+      MINERU_CONCURRENCY: "4"
+      DOCLING_CONCURRENCY: "4"

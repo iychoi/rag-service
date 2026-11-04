@@ -1,0 +1,3 @@
+Weekly meeting notes.
+The storage migration to the new region is scheduled for next quarter.
+Budget approval is pending from the finance team.

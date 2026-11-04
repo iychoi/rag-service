@@ -1,0 +1,78 @@
+# Local development / single-host setup
+# LiteLLM is an external service. For GPU, see docker-compose.gpu.yml.
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: rag
+      POSTGRES_DB: rag
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag -d rag"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  docling:
+    # CPU-only image. To move to a GPU node, switch to the CUDA image or just change rag-api's DOCLING_URL
+    image: ghcr.io/docling-project/docling-serve-cpu:v1.38.2
+    ports:
+      - "5001:5001"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  mineru:
+    # CPU mode: ONNX-based basic tier (no torch).
+    build:
+      context: .
+      dockerfile: docker/mineru/Dockerfile
+      args:
+        MINERU_VERSION: "4.1.7"
+        MINERU_EXTRAS: ""
+        MINERU_MODEL_TIER: basic
+    image: rag-service-mineru:cpu
+    environment:
+      MINERU_TIER: basic             # highest tier the server offers (flash | basic | standard | advanced)
+      MINERU_API_CONCURRENCY: "1"    # one parse at a time on CPU
+      # MINERU_VLM_SERVER_URL: http://gpu-node:30000   # to serve the standard tier via a remote VLM server
+    ports:
+      - "8010:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  rag-api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://rag:rag@postgres:5432/rag
+      DOCLING_URL: http://docling:5001
+      MINERU_URL: http://mineru:8000
+      MINERU_TIER: basic             # default when a request has no tier (must not exceed the mineru server's tier)
+      MINERU_CONCURRENCY: "1"
+      DATA_DIR: /data
+    ports:
+      - "8000:8000"
+    volumes:
+      - ragdata:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      docling:
+        condition: service_started
+      mineru:
+        condition: service_started
+
+volumes:
+  pgdata:
+  ragdata:

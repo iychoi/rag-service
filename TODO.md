@@ -1,0 +1,73 @@
+# TODO
+
+Remaining work, grouped by phase. Each item carries the context needed to pick it up.
+
+Current state: dataset/document management, indexing jobs (Docling and MinerU on CPU), per-dataset pgvector tables, and search all work end to end. Embeddings use the development-only `hash-dev` model, so search is lexical, not semantic, until the LiteLLM integration lands.
+
+---
+
+## Phase 1 — MVP (remaining)
+
+### LiteLLM embedding provider
+- [ ] Implement the `litellm` provider in `src/rag_service/providers/embeddings.py` using LlamaIndex `OpenAILikeEmbedding` (`api_base=LITELLM_BASE_URL`, `model_name=<catalog model>`, `api_key=<X-Model-API-Key>`), registered in `PROVIDERS` with `requires_api_key=True`.
+- [ ] Add a `LITELLM_BASE_URL` setting (e.g. `http://litellm:4000/v1`).
+- [ ] Enable the commented-out entries in `config/embedding_models.yaml` once the models are registered in LiteLLM:
+
+  | Catalog id | Bedrock model id | Dim | Max input | Asymmetric (`input_type`) |
+  |------------|------------------|-----|-----------|---------------------------|
+  | `titan-embed-v2` | `amazon.titan-embed-text-v2:0` | 1024 | 8,192 tokens | no — default for Phase 1 |
+  | `cohere-embed-v4` | `cohere.embed-v4:0` | 1536 | 128K tokens | yes (Phase 2) |
+  | `cohere-embed-multilingual-v3` | `cohere.embed-multilingual-v3` | 1024 | 512 tokens | yes — fallback if v4 is unavailable |
+
+  Catalog `dim` must stay ≤ 2000 (pgvector HNSW limit on `vector`).
+- [ ] Map upstream auth failures without leaking the key: job error `model provider authentication failed`; search returns `502 upstream_auth_failed` (add to API.md, error helper, and `openapi.yaml`).
+- [ ] Tests: mock LiteLLM's `/embeddings` endpoint with respx (key header forwarded, dimension mismatch → job fails with `dimension_mismatch`, missing key → `400 missing_model_api_key`).
+
+### Blocked / to verify
+- [ ] **Blocker:** ask the LiteLLM admin to register an embedding model (at least Titan Text Embeddings V2; Cohere Embed v4 too, for comparison). As of 2026-11-04 LiteLLM only has chat models registered (all on Bedrock, `us.` cross-region profiles).
+- [ ] Verify that LiteLLM forwards Cohere's `input_type` (sent as `extra_body`) to Bedrock.
+- [ ] Verify Cohere Embed v4 availability in the US region in use.
+
+---
+
+## Phase 2 — Quality
+
+- [ ] **Cohere Embed v4 with `input_type`**: subclass `OpenAILikeEmbedding` to send `input_type=search_document` for documents and `search_query` for queries (values come from the catalog `input_type` field). Compare Korean retrieval quality against Titan V2 and decide the default.
+- [ ] **`POST /v1/datasets/{dataset_id}/query`**: retrieval + LLM answer with citations (chunk → document/page/section). LLM via LiteLLM using `OpenAILike(api_base=LITELLM_BASE_URL, api_key=<X-Model-API-Key>, model=..., is_chat_model=True)`. Never put keys into LlamaIndex global `Settings`.
+  - Settings: `LLM_MODEL=claude-sonnet-5-5` (answers), `LLM_FAST_MODEL=claude-haiku-5-5` (auxiliary tasks), `LLM_ALLOWED_MODELS` (per-request override allow-list).
+  - Models currently in LiteLLM and their price per 1M tokens (input/output): `claude-sonnet-5-5` $2.20/$11.00, `claude-haiku-5-5` $0.11/$0.55, `claude-opus-5-5` $4.40/$22.00 (too costly as default).
+- [ ] **Query rewriting / contextual retrieval** with `claude-haiku-5-5` (e.g. add a short document-context summary to each chunk at indexing time).
+- [ ] **Structure-aware chunking**:
+  - Docling: the DoclingDocument JSON is already cached as `raw.json` in the parse cache; use `DoclingNodeParser` (`llama-index-node-parser-docling`, needs only `docling-core`, no torch).
+  - MinerU: `structured_content.json` (cached as `raw.json`) has per-page typed blocks with bboxes; use it to keep tables as single chunks and get exact page numbers.
+- [ ] **Hybrid search + reranking**: `PGVectorStore(hybrid_search=True)` uses PostgreSQL full-text search, whose default configs do not tokenize Korean; evaluate `pg_bigm` / `pgroonga` or a separate BM25 index. Evaluate a reranker (Bedrock rerank models via LiteLLM).
+- [ ] **`parse_only` flow**: parse without an API key first (CPU MinerU can take minutes), then embed later with the key. The parse cache already supports this; it needs an API and a job type.
+
+---
+
+## Phase 3 — Operations
+
+- [ ] **Orphan vector cleanup**: `PGVectorStore` writes in its own session, so metadata and vector writes are not one transaction. Search already hides vectors whose document row is gone; add a periodic cleanup. If this becomes a problem, replace `PGVectorStore` with a vector store that shares the metadata session.
+- [ ] **Structured logging** with header masking (`X-Model-API-Key` must never be logged) and **metrics** (parse duration per parser/tier, embedding tokens, job counts by status).
+- [ ] **GPU validation**: `docker-compose.gpu.yml` is an untested template (MinerU rebuilt with `MINERU_EXTRAS=full`, `MINERU_MODEL_TIER=standard`, `MINERU_TIER=standard`; Docling on `docling-serve-cu128:v1.38.2`). Validate on a GPU host, and validate running parsers on a remote node via `MINERU_URL` / `DOCLING_URL`.
+- [ ] **MinerU tier check at request time**: an unsupported `tier` currently fails the job; check against the server's `GET /v1/tiers` when the job is created and return `422`.
+- [ ] **Stream uploads to MinerU**: the MinerU client reads the whole file into memory before `PUT`; stream it instead (uploads can be up to `MAX_UPLOAD_MB`).
+- [ ] **Parser version bumps**: docling-serve (`v1.38.2`) and MinerU (`4.1.7`) are pinned because their HTTP APIs change between versions (MinerU 2.x `/file_parse` → 4.x `/v1/tasks`). When upgrading, run `pytest -m integration` against the new containers and re-record the fixtures in `tests/fixtures/`.
+
+---
+
+## Phase 4 — Scale and extensions
+
+- [ ] **External worker queue** (arq or Celery + Redis) so workers scale independently of the API. API keys must then cross process boundaries: pass them encrypted with a short TTL, never persist them.
+- [ ] **Progress notifications** via SSE or webhooks (today clients poll the job).
+- [ ] **S3-compatible BlobStore** behind the existing `BlobStore` interface. Parsers could fetch inputs by presigned URL (MinerU tasks accept a source `url`; docling-serve has `/v1/convert/source`).
+- [ ] **Multimodal**: images and tables (Cohere Embed v4 image embeddings, LLM captioning).
+- [ ] **Multi-dataset search** (only if needed): per-dataset tables stay; fan out and merge. Same embedding model → embed the query once and merge by cosine score (a single `UNION ALL` query across tables works). Different models → merge with RRF or a reranker. API shape: `POST /v1/search` with explicit `dataset_ids` (or `?dataset_ids=a,b` if the gateway can only inspect the URL); no "search everything".
+- [ ] **Dedicated vector DB** if pgvector stops scaling (thousands of datasets/tables or large tables); `VectorStoreManager` is the seam to swap.
+
+---
+
+## Open questions
+
+1. Can the LiteLLM admin register Titan Text Embeddings V2 (and Cohere Embed v4)? Once registered, put the LiteLLM model names into `config/embedding_models.yaml`.
+2. The shared Gemini conversation (https://share.gemini.google/I6QJtcFEpbM4) could not be read (JavaScript-rendered page). If it contains decisions (e.g. chunking strategy) that differ from the current implementation, they still need to be reconciled.

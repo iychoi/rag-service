@@ -1,0 +1,22 @@
+{
+ "document": {
+  "filename": "sample.pdf",
+  "md_content": "## Service Agreement\n\nArticle 1. Purpose\n\nThis agreement defines the terms of the cloud storage service.\n\n<!-- page-break -->\n\n## Article 5. Termination\n\nEither party may terminate with 30 days written notice.",
+  "json_content": {
+   "schema_name": "DoclingDocument",
+   "version": "1.0.0",
+   "name": "sample"
+  },
+  "html_content": null,
+  "text_content": null,
+  "doctags_content": null,
+  "doclang_content": null
+ },
+ "status": "success",
+ "errors": [],
+ "processing_time": 1.0799636609990557,
+ "timings": {},
+ "confidence": {
+  "mean_grade": "good"
+ }
+}
