@@ -110,6 +110,20 @@ class EmbeddingConfig(BaseModel):
     )
 
 
+class ContextualConfig(BaseModel):
+    """Contextual retrieval: an LLM writes a short context for each chunk at indexing time."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: str = Field(
+        min_length=1,
+        max_length=255,
+        description="LiteLLM chat model that writes the contexts, passed as-is, e.g. claude-haiku-5-5. "
+        "A fast, inexpensive model is enough; one call is made per chunk.",
+        examples=["claude-haiku-5-5"],
+    )
+
+
 class EmbeddingOut(BaseModel):
     provider: str
     model: str
@@ -133,6 +147,7 @@ class DatasetCreate(BaseModel):
                     "description": "Contracts and policies",
                     "chunk_size": 512,
                     "chunk_overlap": 64,
+                    "contextual": {"model": "claude-haiku-5-5"},
                     "metadata": {"team": "legal"},
                 }
             ]
@@ -142,6 +157,12 @@ class DatasetCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     embedding: EmbeddingConfig = Field(
         description="Embedding model. Cannot be changed later. The base URL is server configuration."
+    )
+    contextual: ContextualConfig | None = Field(
+        default=None,
+        description="Contextual retrieval: before embedding, an LLM writes a short context that "
+        "situates each chunk in its document, and the context is embedded with the chunk. Costs one "
+        "LLM call per chunk at indexing time. Cannot be changed later. Default: off.",
     )
     external_ref: str | None = Field(
         default=None, max_length=255, description="Unique identifier from an external system"
@@ -188,6 +209,7 @@ class DatasetOut(BaseModel):
                     },
                     "chunk_size": 512,
                     "chunk_overlap": 64,
+                    "contextual": {"model": "claude-haiku-5-5"},
                     "metadata": {"team": "legal"},
                     "created_at": "2026-11-04T19:31:49.174949Z",
                     "updated_at": "2026-11-04T19:31:49.174960Z",
@@ -204,6 +226,7 @@ class DatasetOut(BaseModel):
     embedding: EmbeddingOut
     chunk_size: int
     chunk_overlap: int
+    contextual: ContextualConfig | None = Field(description="Contextual retrieval model; null if off")
     metadata: dict[str, Any]
     created_at: datetime
     updated_at: datetime
@@ -227,6 +250,7 @@ class DatasetOut(BaseModel):
             ),
             chunk_size=ds.chunk_size,
             chunk_overlap=ds.chunk_overlap,
+            contextual=ContextualConfig(model=ds.contextual_model) if ds.contextual_model else None,
             metadata=ds.meta,
             created_at=ds.created_at,
             updated_at=ds.updated_at,
@@ -401,6 +425,11 @@ class SearchResult(BaseModel):
     page: int | None = Field(description="1-based page number when the parser reports pages")
     section_path: list[str] = Field(description="Heading path of the chunk")
     chunk_index: int | None
+    context: str | None = Field(
+        default=None,
+        description="LLM-written context embedded with the chunk (datasets with contextual retrieval); "
+        "null otherwise",
+    )
     metadata: dict[str, Any] = Field(description="Current document metadata")
 
 

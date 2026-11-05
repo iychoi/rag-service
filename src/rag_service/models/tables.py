@@ -40,6 +40,7 @@ class JobStatus(StrEnum):
 class JobStage(StrEnum):
     parsing = "parsing"
     chunking = "chunking"
+    contextualizing = "contextualizing"  # only for datasets with contextual retrieval
     embedding = "embedding"
     storing = "storing"
 
@@ -62,6 +63,8 @@ class Dataset(SQLModel, table=True):
         default_factory=dict, sa_column=Column(JSONB, nullable=False)
     )  # dimensions, input_type
     vector_table: str = Field(max_length=63)
+    # LiteLLM chat model that writes a short context for each chunk at indexing time (None: off)
+    contextual_model: str | None = Field(default=None, max_length=255)
 
     chunk_size: int
     chunk_overlap: int

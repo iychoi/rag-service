@@ -18,7 +18,7 @@ MODEL_API_KEY_HEADER = "X-Model-API-Key"
 RESERVED_METADATA_KEYS = frozenset(
     {
         "document_id", "doc_id", "ref_doc_id", "filename", "parser", "page", "section_path",
-        "chunk_index", "job_id", "header_path", "_node_content", "_node_type",
+        "chunk_index", "job_id", "header_path", "context", "_node_content", "_node_type",
     }
 )  # fmt: skip
 _METADATA_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,63}$")

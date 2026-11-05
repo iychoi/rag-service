@@ -1,4 +1,4 @@
-"""Indexing pipeline: parse → chunk → embed → store."""
+"""Indexing pipeline: parse → chunk → (contextualize) → embed → store."""
 
 import asyncio
 import logging
@@ -26,14 +26,17 @@ from rag_service.providers.embeddings import build_embedding
 from rag_service.providers.upstream import upstream_api_error
 from rag_service.services.embedding import spec_from_dataset
 from rag_service.services.chunking import Chunk, chunk_document
+from rag_service.services.contextual import ContextGenerator
 from rag_service.storage.blob import BlobStore
 from rag_service.storage.vector import VectorStoreManager
 
 log = logging.getLogger(__name__)
 
-# Progress ranges per stage
+# Progress ranges per stage. With contextual retrieval, 0.45–0.7 is contextualizing and
+# embedding starts at 0.7.
 _P_PARSE_END = 0.4
 _P_CHUNK_END = 0.45
+_P_CONTEXT_END = 0.7
 _P_EMBED_END = 0.9
 
 
@@ -93,9 +96,17 @@ class IndexingPipeline:
             chunks = await asyncio.to_thread(
                 chunk_document, parsed, parser_name, ds.chunk_size, ds.chunk_overlap
             )
-            await self._update_job(job_id, stage=JobStage.embedding, progress=_P_CHUNK_END)
+            contexts: list[str] | None = None
+            embed_start = _P_CHUNK_END
+            if ds.contextual_model and chunks:
+                await self._update_job(job_id, stage=JobStage.contextualizing, progress=_P_CHUNK_END)
+                contexts = await self._contextualize(job_id, ds, chunks, api_key)
+                embed_start = _P_CONTEXT_END
+            await self._update_job(job_id, stage=JobStage.embedding, progress=embed_start)
 
-            nodes = await self._embed(job, doc, ds, chunks, api_key, parser_name)
+            nodes = await self._embed(
+                job, doc, ds, chunks, contexts, api_key, parser_name, embed_start
+            )
             await self._update_job(job_id, stage=JobStage.storing, progress=_P_EMBED_END)
 
             await self.vectors.add(ds, nodes)
@@ -159,14 +170,57 @@ class IndexingPipeline:
         await asyncio.to_thread(self.blob.save_parsed, ds.id, doc.id, cache_key, parsed)
         return parsed, parser.name, parsed.metadata.get("backend")
 
+    async def _contextualize(
+        self, job_id: str, ds: Dataset, chunks: list[Chunk], api_key: str | None
+    ) -> list[str]:
+        s = self.settings
+        if not s.litellm_base_url or not api_key:
+            raise JobFailedError("context generation needs LITELLM_BASE_URL and X-Model-API-Key")
+        assert ds.contextual_model is not None
+        generator = ContextGenerator(
+            base_url=s.litellm_base_url,
+            model=ds.contextual_model,
+            api_key=api_key,
+            max_output_tokens=s.contextual_max_output_tokens,
+            document_tokens=s.contextual_document_tokens,
+            concurrency=s.contextual_concurrency,
+            timeout_s=s.llm_timeout_s,
+            max_retries=s.litellm_max_retries,
+        )
+        total = len(chunks)
+        step = max(1, total // 20)  # about 20 progress updates per document
+
+        async def progress(done: int) -> None:
+            if done % step == 0 or done == total:
+                frac = done / total
+                await self._update_job(
+                    job_id, progress=_P_CHUNK_END + (_P_CONTEXT_END - _P_CHUNK_END) * frac
+                )
+
+        try:
+            contexts = await generator.generate([c.text for c in chunks], progress)
+        except Exception as e:
+            if (err := upstream_api_error(e, s.llm_timeout_s)) is not None:
+                raise JobFailedError(f"context generation failed ({err.code}): {err.message}") from e
+            raise
+        u = generator.usage
+        log.info(
+            "job %s: %d contexts with %s; input %d tokens (%d cached), output %d",
+            job_id, u.calls, ds.contextual_model, u.input_tokens, u.cached_input_tokens,
+            u.output_tokens,
+        )  # fmt: skip
+        return contexts
+
     async def _embed(
         self,
         job: IndexJob,
         doc: Document,
         ds: Dataset,
         chunks: list[Chunk],
+        contexts: list[str] | None,
         api_key: str | None,
         parser_name: str,
+        start: float,
     ) -> list[TextNode]:
         s = self.settings
         try:
@@ -184,34 +238,40 @@ class IndexingPipeline:
 
         nodes: list[TextNode] = []
         total = max(1, len(chunks))
-        for start in range(0, len(chunks), self.embed_batch_size):
-            batch = chunks[start : start + self.embed_batch_size]
+        for first in range(0, len(chunks), self.embed_batch_size):
+            batch = chunks[first : first + self.embed_batch_size]
+            batch_contexts = (contexts or [""] * len(chunks))[first : first + len(batch)]
             try:
                 vectors = await embed_model.aget_text_embedding_batch(
-                    [c.embedding_text() for c in batch]
+                    [c.embedding_text(ctx) for c, ctx in zip(batch, batch_contexts, strict=True)]
                 )
             except Exception as e:
                 if (err := upstream_api_error(e, s.embedding_timeout_s)) is not None:
                     raise JobFailedError(f"embedding failed ({err.code}): {err.message}") from e
                 raise
-            for chunk, vec in zip(batch, vectors, strict=True):
+            for chunk, ctx, vec in zip(batch, batch_contexts, vectors, strict=True):
                 if len(vec) != ds.embedding_dim:
                     raise JobFailedError(
                         f"dimension_mismatch: model returned {len(vec)}, dataset expects {ds.embedding_dim}"
                     )
-                nodes.append(self._node(job.id, parser_name, doc, chunk, vec))
-            done = min(len(chunks), start + len(batch))
+                nodes.append(self._node(job.id, parser_name, doc, chunk, vec, ctx))
+            done = min(len(chunks), first + len(batch))
             await self._update_job(
                 job.id,
-                progress=_P_CHUNK_END + (_P_EMBED_END - _P_CHUNK_END) * done / total,
+                progress=start + (_P_EMBED_END - start) * done / total,
             )
         return nodes
 
     @staticmethod
     def _node(
-        job_id: str, parser_name: str, doc: Document, chunk: Chunk, embedding: list[float]
+        job_id: str,
+        parser_name: str,
+        doc: Document,
+        chunk: Chunk,
+        embedding: list[float],
+        context: str = "",
     ) -> TextNode:
-        metadata = {
+        metadata: dict[str, Any] = {
             **doc.meta,
             "filename": doc.filename,
             "parser": parser_name,
@@ -220,6 +280,8 @@ class IndexingPipeline:
             "chunk_index": chunk.chunk_index,
             "job_id": job_id,
         }
+        if context:
+            metadata["context"] = context
         return TextNode(
             text=chunk.text,
             metadata=metadata,

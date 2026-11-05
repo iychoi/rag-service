@@ -38,7 +38,11 @@ paths:
       summary: Create a dataset
       description: 'The embedding model is chosen here and cannot be changed later. For a `litellm` model,
         send `X-Model-API-Key`: the model is called once to measure its output dimension, which the dataset''s
-        vector table needs. The LiteLLM base URL is server configuration.'
+        vector table needs. The LiteLLM base URL is server configuration.
+
+
+        With `contextual`, an LLM writes a short context for each chunk at indexing time and it is embedded
+        with the chunk. The model is called once here to check it (key required).'
       operationId: create_dataset
       parameters:
       - name: X-Model-API-Key
@@ -91,7 +95,8 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
           description: 'Invalid request. Error codes: `validation_error`, `embedding_model_required`,
-            `invalid_embedding_model`, `embedding_dim_too_large`, `invalid_chunk_overlap`, `invalid_metadata`'
+            `invalid_embedding_model`, `embedding_dim_too_large`, `invalid_contextual_model`, `invalid_chunk_overlap`,
+            `invalid_metadata`'
           content:
             application/json:
               examples:
@@ -115,6 +120,11 @@ paths:
                     error:
                       code: embedding_dim_too_large
                       message: model returns 3072-dimensional vectors; at most 2000 are supported
+                invalid_contextual_model:
+                  value:
+                    error:
+                      code: invalid_contextual_model
+                      message: 'model gateway returned HTTP 400: Invalid model name passed in model=claude-haiku-9'
                 invalid_chunk_overlap:
                   value:
                     error:
@@ -1790,6 +1800,22 @@ components:
       example:
         parser: docling
         scope: unindexed
+    ContextualConfig:
+      properties:
+        model:
+          type: string
+          maxLength: 255
+          minLength: 1
+          title: Model
+          description: LiteLLM chat model that writes the contexts, passed as-is, e.g. claude-haiku-5-5.
+            A fast, inexpensive model is enough; one call is made per chunk.
+          example: claude-haiku-5-5
+      additionalProperties: false
+      type: object
+      required:
+      - model
+      title: ContextualConfig
+      description: 'Contextual retrieval: an LLM writes a short context for each chunk at indexing time.'
     DatasetCreate:
       properties:
         name:
@@ -1800,6 +1826,13 @@ components:
         embedding:
           $ref: '#/components/schemas/EmbeddingConfig'
           description: Embedding model. Cannot be changed later. The base URL is server configuration.
+        contextual:
+          description: 'Contextual retrieval: before embedding, an LLM writes a short context that situates
+            each chunk in its document, and the context is embedded with the chunk. Costs one LLM call
+            per chunk at indexing time. Cannot be changed later. Default: off.'
+          nullable: true
+          allOf:
+          - $ref: '#/components/schemas/ContextualConfig'
         external_ref:
           type: string
           maxLength: 255
@@ -1838,6 +1871,8 @@ components:
       example:
         chunk_overlap: 64
         chunk_size: 512
+        contextual:
+          model: claude-haiku-5-5
         description: Contracts and policies
         embedding:
           model: titan-embed-v2
@@ -1870,6 +1905,11 @@ components:
         chunk_overlap:
           type: integer
           title: Chunk Overlap
+        contextual:
+          description: Contextual retrieval model; null if off
+          nullable: true
+          allOf:
+          - $ref: '#/components/schemas/ContextualConfig'
         metadata:
           additionalProperties: true
           type: object
@@ -1898,6 +1938,7 @@ components:
       - embedding
       - chunk_size
       - chunk_overlap
+      - contextual
       - metadata
       - created_at
       - updated_at
@@ -1905,6 +1946,8 @@ components:
       example:
         chunk_overlap: 64
         chunk_size: 512
+        contextual:
+          model: claude-haiku-5-5
         created_at: '2026-11-04T19:31:49.174949Z'
         description: Contracts and policies
         document_counts:
@@ -2419,6 +2462,7 @@ components:
       enum:
       - parsing
       - chunking
+      - contextualizing
       - embedding
       - storing
       title: JobStage
@@ -2632,6 +2676,12 @@ components:
           type: integer
           title: Chunk Index
           nullable: true
+        context:
+          type: string
+          title: Context
+          description: LLM-written context embedded with the chunk (datasets with contextual retrieval);
+            null otherwise
+          nullable: true
         metadata:
           additionalProperties: true
           type: object
@@ -2826,6 +2876,12 @@ components:
         chunk_index:
           type: integer
           title: Chunk Index
+          nullable: true
+        context:
+          type: string
+          title: Context
+          description: LLM-written context embedded with the chunk (datasets with contextual retrieval);
+            null otherwise
           nullable: true
         metadata:
           additionalProperties: true

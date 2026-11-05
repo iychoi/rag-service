@@ -64,11 +64,12 @@ class Chunk:
     section_path: list[str] = field(default_factory=list)
     page: int | None = None
 
-    def embedding_text(self) -> str:
-        """Embedding input: prefix the section path to add context."""
-        if self.section_path:
-            return " > ".join(self.section_path) + "\n\n" + self.text
-        return self.text
+    def embedding_text(self, context: str = "") -> str:
+        """Embedding input: the section path and the LLM-written context (if any), then the text."""
+        head = [" > ".join(self.section_path)] if self.section_path else []
+        if context:
+            head.append(context)
+        return "\n\n".join([*head, self.text])
 
 
 def _splitter(chunk_size: int, chunk_overlap: int) -> SentenceSplitter:

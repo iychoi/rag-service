@@ -14,6 +14,8 @@ from rag_service.state import AppState
 
 def require_api_key_if_needed(state: AppState, ds: Dataset, api_key: str | None) -> None:
     require_embedding_access(state, ds.embedding_provider, api_key)
+    if ds.contextual_model:  # contexts are written through LiteLLM even with hash embeddings
+        require_embedding_access(state, "litellm", api_key)
 
 
 def resolve_parser(

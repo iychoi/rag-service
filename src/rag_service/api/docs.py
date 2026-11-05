@@ -74,6 +74,7 @@ _EXAMPLE_MESSAGES = {
     "embedding_model_required": "embedding.model is required for litellm",
     "invalid_embedding_model": "model gateway returned HTTP 400: Invalid model name passed in model=titan-embed-v9",
     "embedding_dim_too_large": "model returns 3072-dimensional vectors; at most 2000 are supported",
+    "invalid_contextual_model": "model gateway returned HTTP 400: Invalid model name passed in model=claude-haiku-9",
     "invalid_chunk_overlap": "chunk_overlap must be smaller than chunk_size",
     "invalid_metadata": "metadata key 'job_id' is reserved",
     "invalid_filename": "uploaded file must have a filename",

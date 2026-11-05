@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     # max_source_tokens up to query_max_source_tokens.
     query_source_tokens: int = 16_000
     query_max_source_tokens: int = 100_000
+    # Contextual retrieval (datasets with `contextual.model`): one LLM call per chunk at indexing.
+    # Documents longer than contextual_document_tokens are given to the LLM in consecutive parts.
+    contextual_max_output_tokens: int = 200
+    contextual_document_tokens: int = 100_000
+    contextual_concurrency: int = 4
 
     @property
     def max_upload_bytes(self) -> int:

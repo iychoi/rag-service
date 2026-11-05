@@ -76,6 +76,7 @@ async def retrieve(
                 page=md.get("page"),
                 section_path=list(md.get("section_path") or []),
                 chunk_index=md.get("chunk_index"),
+                context=md.get("context"),
                 metadata=doc.meta,
             )
         )

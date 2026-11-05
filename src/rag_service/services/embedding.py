@@ -1,4 +1,5 @@
-"""Embedding access for API handlers and jobs: spec from a dataset, key checks, dimension probing."""
+"""Model access for API handlers and jobs: embedding spec from a dataset, key checks, and the
+model checks run at dataset creation (embedding dimension, contextual retrieval model)."""
 
 from typing import TYPE_CHECKING
 
@@ -17,6 +18,7 @@ from rag_service.providers.embeddings import (
     provider_requires_api_key,
 )
 from rag_service.providers.upstream import upstream_api_error
+from rag_service.services.contextual import probe_chat_model
 
 if TYPE_CHECKING:  # avoid an import cycle: state → jobs.runner → services.indexing → here
     from rag_service.state import AppState
@@ -77,6 +79,27 @@ async def embed_query(state: "AppState", ds: Dataset, query: str, api_key: str |
         if (err := upstream_api_error(e, state.settings.embedding_timeout_s)) is not None:
             raise err from e
         raise
+
+
+async def probe_contextual_model(state: "AppState", model: str, api_key: str | None) -> None:
+    """Check the contextual retrieval model once at dataset creation (one 1-token call)."""
+    require_embedding_access(state, "litellm", api_key)
+    s = state.settings
+    try:
+        await probe_chat_model(
+            base_url=s.litellm_base_url or "",
+            model=model,
+            api_key=api_key or "",
+            timeout_s=s.llm_timeout_s,
+            max_retries=s.litellm_max_retries,
+        )
+    except Exception as e:
+        err = upstream_api_error(e, s.llm_timeout_s)
+        if err is None:
+            raise
+        if isinstance(e, openai.BadRequestError | openai.NotFoundError):
+            raise APIError(422, "invalid_contextual_model", err.message) from e
+        raise err from e
 
 
 async def probe_dimension(state: "AppState", spec: EmbeddingSpec, api_key: str | None) -> int:

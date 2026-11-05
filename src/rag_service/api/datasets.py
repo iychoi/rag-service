@@ -17,7 +17,11 @@ from rag_service.models.schemas import (
     Page,
 )
 from rag_service.models.tables import ACTIVE_JOB_STATUSES, Dataset, Document, IndexJob, new_id, utcnow
-from rag_service.services.embedding import probe_dimension, spec_from_config
+from rag_service.services.embedding import (
+    probe_contextual_model,
+    probe_dimension,
+    spec_from_config,
+)
 from rag_service.storage.vector import vector_table_name
 
 router = APIRouter(tags=["datasets"])
@@ -43,13 +47,16 @@ async def _document_counts(session: Session, dataset_id: str) -> dict[str, int]:
     summary="Create a dataset",
     description="The embedding model is chosen here and cannot be changed later. For a `litellm` "
     "model, send `X-Model-API-Key`: the model is called once to measure its output dimension, which "
-    "the dataset's vector table needs. The LiteLLM base URL is server configuration.",
+    "the dataset's vector table needs. The LiteLLM base URL is server configuration.\n\n"
+    "With `contextual`, an LLM writes a short context for each chunk at indexing time and it is "
+    "embedded with the chunk. The model is called once here to check it (key required).",
     responses=errors(
         {
             400: ["missing_model_api_key"],
             409: ["external_ref_conflict"],
             422: ["validation_error", "embedding_model_required", "invalid_embedding_model",
-                  "embedding_dim_too_large", "invalid_chunk_overlap", "invalid_metadata"],
+                  "embedding_dim_too_large", "invalid_contextual_model", "invalid_chunk_overlap",
+                  "invalid_metadata"],
             502: ["upstream_auth_failed", "upstream_error", "upstream_unreachable"],
             503: ["litellm_not_configured"],
             504: ["upstream_timeout"],
@@ -64,6 +71,8 @@ async def create_dataset(
     validate_user_metadata(body.metadata)
     spec = spec_from_config(body.embedding)
     dim = await probe_dimension(state, spec, api_key)
+    if body.contextual is not None:
+        await probe_contextual_model(state, body.contextual.model, api_key)
 
     ds_id = new_id()
     ds = Dataset(
@@ -78,6 +87,7 @@ async def create_dataset(
         vector_table=vector_table_name(ds_id),
         chunk_size=body.chunk_size,
         chunk_overlap=body.chunk_overlap,
+        contextual_model=body.contextual.model if body.contextual else None,
         meta=body.metadata,
     )
     session.add(ds)
