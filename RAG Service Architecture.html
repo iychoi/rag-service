@@ -1,0 +1,599 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>RAG Service Architecture</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one reading column; each section pairs a short explanation with a full-width diagram panel. */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --ink: #17212c;
+  --muted: #55626f;
+  --line: #cfd6de;
+  --edge: #66737f;
+  --code-bg: #e8effb;
+  --code-stroke: #3a6cc0;
+  --code-wash: #f4f7fd;
+  --cont-bg: #e7f3ed;
+  --cont-stroke: #2e8463;
+  --ext-bg: #fbf2e2;
+  --ext-stroke: #a6762a;
+  --accent: #2c5fb3;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141a; --surface: #161d26; --ink: #e3e9f0; --muted: #98a6b5; --line: #2d3947; --edge: #8a99aa;
+    --code-bg: #172640; --code-stroke: #719ee8; --code-wash: #121b28;
+    --cont-bg: #12291f; --cont-stroke: #55b590;
+    --ext-bg: #2b2215; --ext-stroke: #d2a356;
+    --accent: #7ea9f0;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141a; --surface: #161d26; --ink: #e3e9f0; --muted: #98a6b5; --line: #2d3947; --edge: #8a99aa;
+  --code-bg: #172640; --code-stroke: #719ee8; --code-wash: #121b28;
+  --cont-bg: #12291f; --cont-stroke: #55b590;
+  --ext-bg: #2b2215; --ext-stroke: #d2a356;
+  --accent: #7ea9f0;
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding-block: 40px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 56px;
+}
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+h1 { font-size: 2.1rem; line-height: 1.15; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.35rem; line-height: 1.25; font-weight: 600; }
+h3 { font-size: 0.95rem; font-weight: 600; }
+p { margin: 0; }
+code, .mono { font-family: var(--font-mono); font-size: 0.86em; }
+code { background: var(--code-wash); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+
+header { display: grid; gap: 14px; }
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.lede { max-width: 66ch; color: var(--ink); font-size: 1.02rem; }
+.status {
+  max-width: 66ch;
+  font-size: 0.88rem;
+  color: var(--muted);
+  border-left: 3px solid var(--ext-stroke);
+  padding-left: 12px;
+}
+
+.legend { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 0.86rem; color: var(--muted); }
+.legend li { display: flex; align-items: center; gap: 8px; }
+.sw { width: 22px; height: 14px; border-radius: 3px; border: 1.5px solid; flex: none; }
+.sw.code { background: var(--code-bg); border-color: var(--code-stroke); }
+.sw.cont { background: var(--cont-bg); border-color: var(--cont-stroke); }
+.sw.ext { background: var(--ext-bg); border-color: var(--ext-stroke); border-style: dashed; }
+
+section { display: grid; gap: 16px; min-width: 0; }
+.intro { max-width: 66ch; color: var(--muted); }
+
+.diagram {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  overflow-x: auto;
+}
+.diagram svg { display: block; width: 100%; height: auto; }
+.diagram.sys svg { min-width: 700px; }
+.diagram.seq svg { min-width: 700px; }
+
+/* SVG styling */
+svg .n-code { fill: var(--code-bg); stroke: var(--code-stroke); stroke-width: 1.4; }
+svg .n-cont { fill: var(--cont-bg); stroke: var(--cont-stroke); stroke-width: 1.4; }
+svg .n-ext { fill: var(--ext-bg); stroke: var(--ext-stroke); stroke-width: 1.4; stroke-dasharray: 5 4; }
+svg .grp { fill: var(--code-wash); stroke: var(--code-stroke); stroke-width: 1.6; }
+svg .band { fill: var(--surface); stroke: var(--code-stroke); stroke-width: 1.2; stroke-dasharray: 4 3; }
+svg .chip { fill: var(--surface); stroke: var(--code-stroke); stroke-width: 1; }
+svg .note { fill: var(--surface); stroke: var(--line); stroke-width: 1; }
+svg .frame { fill: none; stroke: var(--edge); stroke-width: 1; }
+svg .tag { fill: var(--surface); stroke: var(--edge); stroke-width: 1; }
+svg .div { stroke: var(--edge); stroke-width: 1; stroke-dasharray: 4 4; }
+svg .life { stroke: var(--line); stroke-width: 1.4; stroke-dasharray: 5 5; }
+svg .act { fill: var(--code-bg); stroke: var(--code-stroke); stroke-width: 1; }
+svg .edge { fill: none; stroke: var(--edge); stroke-width: 1.4; }
+svg .ret { fill: none; stroke: var(--edge); stroke-width: 1.3; stroke-dasharray: 5 4; }
+svg .ah { fill: var(--edge); }
+svg .tt { font: 600 13.5px var(--font-sans); fill: var(--ink); }
+svg .tq { font: 400 11.5px var(--font-sans); fill: var(--muted); }
+svg .tb { font: 400 11.5px var(--font-sans); fill: var(--muted); }
+svg .ts { font: 400 11px var(--font-sans); fill: var(--muted); }
+svg .tm { font: 400 11px var(--font-mono); fill: var(--muted); }
+svg .tc { font: 500 11px var(--font-mono); fill: var(--ink); }
+svg .tl { font: 400 10.5px var(--font-sans); fill: var(--muted); }
+svg .seg { fill: var(--code-bg); stroke: var(--code-stroke); stroke-width: 1.2; }
+svg .seg-strong { fill: var(--code-stroke); opacity: 0.22; }
+svg .tick { stroke: var(--edge); stroke-width: 1; }
+
+/* Indexing steps */
+.steps {
+  list-style: none; margin: 0; padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.step {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  min-width: 0;
+}
+.step-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.step-head h3 { display: flex; gap: 8px; align-items: baseline; }
+.step-num { font-family: var(--font-mono); font-size: 12px; color: var(--accent); }
+.pill {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--code-stroke);
+  background: var(--code-bg);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+.step p { font-size: 0.88rem; color: var(--muted); }
+.step .where { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); opacity: 0.85; overflow-wrap: anywhere; }
+
+.scale { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 8px; overflow-x: auto; }
+.scale svg { display: block; width: 100%; min-width: 520px; height: auto; }
+.scale-cap { font-size: 0.82rem; color: var(--muted); }
+
+.callouts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.callout {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 0.88rem;
+  color: var(--muted);
+  background: var(--surface);
+  min-width: 0;
+}
+.callout strong { color: var(--ink); font-weight: 600; }
+
+/* Decisions */
+.decisions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; margin: 0; }
+.decision { border-top: 1px solid var(--line); padding-block: 14px; display: grid; gap: 4px; min-width: 0; }
+.decision dt { font-weight: 600; }
+.decision dd { margin: 0; font-size: 0.9rem; color: var(--muted); }
+
+/* Seams table */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 0.88rem; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: none; }
+th { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+td.phase { font-family: var(--font-mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+footer { font-size: 0.82rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; }
+
+@media (max-width: 760px) {
+  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .callouts, .decisions { grid-template-columns: 1fr; }
+  h1 { font-size: 1.7rem; }
+}
+@media (max-width: 480px) {
+  .steps { grid-template-columns: 1fr; }
+}
+</style>
+
+<main class="page">
+  <header>
+    <p class="eyebrow">rag-service · drawn from commit 7e067e4</p>
+    <h1>RAG Service Architecture</h1>
+    <p class="lede">One FastAPI process manages datasets and documents, indexes them into a pgvector table per dataset, and answers questions over them. Parsing runs in separate containers. Embeddings and answers go through an external LiteLLM proxy with the caller's own key.</p>
+    <p class="status">Status: everything below works end to end against a mocked LiteLLM. The real LiteLLM has no embedding model registered yet (as of 2026-11-04), which blocks verification with real embeddings.</p>
+    <ul class="legend" aria-label="Legend">
+      <li><span class="sw code"></span>Code in this repo</li>
+      <li><span class="sw cont"></span>Runs in docker-compose.yml</li>
+      <li><span class="sw ext"></span>External service</li>
+    </ul>
+  </header>
+
+  <section id="components" aria-labelledby="h-components">
+    <h2 id="h-components">Components</h2>
+    <p class="intro">Requests arrive through a gateway that handles authentication. Inside rag-api, indexing runs on in-process background workers while search and query run inline in the request. Every component reaches outside the process through one of four adapters held in <code>AppState</code>.</p>
+    <div class="diagram sys">
+      <svg viewBox="0 0 820 1010" role="img" aria-labelledby="sys-title">
+        <title id="sys-title">Component diagram: client, gateway, rag-api internals, parser containers, storage and LiteLLM</title>
+        <defs>
+          <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker>
+        </defs>
+
+        <!-- Client and gateway -->
+        <rect class="n-ext" x="20" y="16" width="200" height="64" rx="8"/>
+        <text class="tt" x="36" y="42">Client</text>
+        <text class="tb" x="36" y="62">sends X-Model-API-Key</text>
+        <rect class="n-ext" x="260" y="16" width="540" height="64" rx="8"/>
+        <text class="tt" x="276" y="42">API gateway<tspan class="tq" dx="8">external, not in this repo</tspan></text>
+        <text class="tb" x="276" y="62">Authenticates callers; authorizes per dataset by path prefix /v1/datasets/{id}/…</text>
+        <path class="edge" d="M220 48 H256" marker-end="url(#a1)"/>
+        <path class="edge" d="M530 80 V145" marker-end="url(#a1)"/>
+
+        <!-- rag-api container -->
+        <rect class="grp" x="20" y="110" width="780" height="600" rx="12"/>
+        <text class="tt" x="36" y="133">rag-api</text>
+        <text class="tm" x="98" y="133">container :8000 · FastAPI on uvicorn · one async process</text>
+
+        <!-- HTTP API -->
+        <rect class="n-code" x="40" y="148" width="740" height="96" rx="8"/>
+        <text class="tt" x="56" y="172">HTTP API</text>
+        <text class="tm" x="124" y="172">/v1 · api/*.py</text>
+        <rect class="chip" x="56" y="182" width="73" height="24" rx="12"/><text class="tc" x="92.5" y="198" text-anchor="middle">datasets</text>
+        <rect class="chip" x="139" y="182" width="80" height="24" rx="12"/><text class="tc" x="179" y="198" text-anchor="middle">documents</text>
+        <rect class="chip" x="229" y="182" width="100" height="24" rx="12"/><text class="tc" x="279" y="198" text-anchor="middle">index · jobs</text>
+        <rect class="chip" x="339" y="182" width="60" height="24" rx="12"/><text class="tc" x="369" y="198" text-anchor="middle">search</text>
+        <rect class="chip" x="409" y="182" width="139" height="24" rx="12"/><text class="tc" x="478.5" y="198" text-anchor="middle">query · JSON | SSE</text>
+        <rect class="chip" x="558" y="182" width="66" height="24" rx="12"/><text class="tc" x="591" y="198" text-anchor="middle">parsers</text>
+        <rect class="chip" x="634" y="182" width="126" height="24" rx="12"/><text class="tc" x="697" y="198" text-anchor="middle">healthz · readyz</text>
+        <text class="tb" x="56" y="230">The dataset id is in every content path; a document or job id used under another dataset returns 404.</text>
+
+        <path class="edge" d="M215 244 V277" marker-end="url(#a1)"/>
+        <text class="tl" x="223" y="265">create job, submit(id, key)</text>
+        <path class="edge" d="M595 244 V277" marker-end="url(#a1)"/>
+        <text class="tl" x="603" y="265">/search and /query</text>
+
+        <!-- Row 2 -->
+        <rect class="n-code" x="40" y="280" width="350" height="100" rx="8"/>
+        <text class="tt" x="56" y="304">JobRunner</text>
+        <text class="tm" x="136" y="304">jobs/runner.py</text>
+        <text class="tb" x="56" y="326">asyncio.Queue with JOB_WORKERS (4) worker tasks</text>
+        <text class="tb" x="56" y="344">Caller's key held in memory only while its job runs</text>
+        <text class="tb" x="56" y="362">Restart marks queued/running jobs failed</text>
+
+        <rect class="n-code" x="410" y="280" width="370" height="100" rx="8"/>
+        <text class="tt" x="426" y="304">Retrieval</text>
+        <text class="tm" x="502" y="304">services/retrieval.py</text>
+        <text class="tb" x="426" y="326">Validate top_k ≤ 50 and metadata filter keys</text>
+        <text class="tb" x="426" y="344">Embed the query with the dataset's own model</text>
+        <text class="tb" x="426" y="362">Top-k from pgvector, then join live document rows</text>
+
+        <path class="edge" d="M215 380 V409" marker-end="url(#a1)"/>
+        <text class="tl" x="223" y="399">a worker runs the job</text>
+        <path class="edge" d="M595 380 V409" marker-end="url(#a1)"/>
+        <text class="tl" x="603" y="399">/query only: sources [1…n]</text>
+
+        <!-- Row 3 -->
+        <rect class="n-code" x="40" y="412" width="350" height="120" rx="8"/>
+        <text class="tt" x="56" y="436">IndexingPipeline</text>
+        <text class="tm" x="190" y="436">services/indexing.py</text>
+        <rect class="chip" x="56" y="450" width="60" height="24" rx="12"/><text class="tc" x="86" y="466" text-anchor="middle">parse</text>
+        <rect class="chip" x="141" y="450" width="60" height="24" rx="12"/><text class="tc" x="171" y="466" text-anchor="middle">chunk</text>
+        <rect class="chip" x="226" y="450" width="60" height="24" rx="12"/><text class="tc" x="256" y="466" text-anchor="middle">embed</text>
+        <rect class="chip" x="311" y="450" width="60" height="24" rx="12"/><text class="tc" x="341" y="466" text-anchor="middle">store</text>
+        <path class="edge" d="M118 462 H138" marker-end="url(#a1)"/>
+        <path class="edge" d="M203 462 H223" marker-end="url(#a1)"/>
+        <path class="edge" d="M288 462 H308" marker-end="url(#a1)"/>
+        <text class="tb" x="56" y="498">Parse cache keyed by parser + hash of options</text>
+        <text class="tb" x="56" y="516">Re-index adds new nodes, then drops old ones</text>
+
+        <rect class="n-code" x="410" y="412" width="370" height="120" rx="8"/>
+        <text class="tt" x="426" y="436">Answering</text>
+        <text class="tm" x="506" y="436">services/answering.py</text>
+        <text class="tb" x="426" y="458">System prompt: answer only from the numbered sources</text>
+        <text class="tb" x="426" y="476">Model named in each request, passed to LiteLLM as-is</text>
+        <text class="tb" x="426" y="494">Whole JSON answer, or SSE: sources, delta…, done</text>
+        <text class="tb" x="426" y="512">Citations [n] parsed back out of the answer text</text>
+
+        <path class="edge" d="M215 532 V559" marker-end="url(#a1)"/>
+        <path class="edge" d="M595 532 V559" marker-end="url(#a1)"/>
+
+        <!-- AppState adapters -->
+        <rect class="band" x="40" y="562" width="740" height="130" rx="10"/>
+        <text class="tt" x="56" y="582">AppState</text>
+        <text class="tm" x="128" y="582">adapters built once at startup · main.py build_state()</text>
+
+        <rect class="n-code" x="52" y="594" width="250" height="86" rx="6"/>
+        <text class="tt" x="64" y="616">ParserRegistry</text>
+        <text class="ts" x="64" y="634">passthrough · docling · mineru</text>
+        <text class="ts" x="64" y="650">one concurrency semaphore per parser</text>
+        <text class="ts" x="64" y="666">.md / .txt always go to passthrough</text>
+
+        <rect class="n-code" x="316" y="594" width="132" height="86" rx="6"/>
+        <text class="tt" x="328" y="616">BlobStore</text>
+        <text class="ts" x="328" y="634">original files</text>
+        <text class="ts" x="328" y="650">parse cache</text>
+        <text class="ts" x="328" y="666">local disk today</text>
+
+        <rect class="n-code" x="462" y="594" width="152" height="86" rx="6"/>
+        <text class="tt" x="474" y="616">Postgres access</text>
+        <text class="ts" x="474" y="634">SQLModel: metadata</text>
+        <text class="ts" x="474" y="650">VectorStoreManager:</text>
+        <text class="ts" x="474" y="666">one table per dataset</text>
+
+        <rect class="n-code" x="628" y="594" width="140" height="86" rx="6"/>
+        <text class="tt" x="640" y="616">Model clients</text>
+        <text class="ts" x="640" y="634">embeddings + chat</text>
+        <text class="ts" x="640" y="650">litellm | hash (dev)</text>
+        <text class="ts" x="640" y="666">errors → 502 / 504</text>
+
+        <!-- Adapter → external edges -->
+        <path class="edge" d="M111 680 V757" marker-end="url(#a1)"/><text class="tl" x="117" y="740">HTTP</text>
+        <path class="edge" d="M243 680 V757" marker-end="url(#a1)"/><text class="tl" x="249" y="740">HTTP</text>
+        <path class="edge" d="M382 680 V757" marker-end="url(#a1)"/><text class="tl" x="388" y="740">files</text>
+        <path class="edge" d="M538 680 V757" marker-end="url(#a1)"/><text class="tl" x="544" y="740">SQL</text>
+        <path class="edge" d="M698 680 V757" marker-end="url(#a1)"/><text class="tl" x="704" y="740">HTTPS</text>
+
+        <!-- Externals -->
+        <rect class="n-cont" x="52" y="760" width="118" height="130" rx="8"/>
+        <text class="tt" x="62" y="784">docling-serve</text>
+        <text class="tm" x="62" y="802">:5001</text>
+        <text class="ts" x="62" y="822">v1.38.2, CPU</text>
+        <text class="ts" x="62" y="840">GPU: CUDA image</text>
+        <text class="ts" x="62" y="858">async task + poll</text>
+
+        <rect class="n-cont" x="184" y="760" width="118" height="130" rx="8"/>
+        <text class="tt" x="194" y="784">mineru-api</text>
+        <text class="tm" x="194" y="802">:8000</text>
+        <text class="ts" x="194" y="822">4.1.7, tier basic</text>
+        <text class="ts" x="194" y="840">VLM tiers on GPU</text>
+        <text class="ts" x="194" y="858">async task + poll</text>
+
+        <rect class="n-cont" x="316" y="760" width="132" height="130" rx="8"/>
+        <text class="tt" x="326" y="784">ragdata volume</text>
+        <text class="tm" x="326" y="802">/data</text>
+        <text class="tm" x="326" y="822">originals/</text>
+        <text class="tm" x="326" y="840">parsed/</text>
+        <text class="tm" x="326" y="858">tmp/</text>
+
+        <rect class="n-cont" x="462" y="760" width="152" height="130" rx="8"/>
+        <text class="tt" x="472" y="784">PostgreSQL 17</text>
+        <text class="tm" x="472" y="802">pgvector · :5432</text>
+        <text class="ts" x="472" y="822">public: datasets,</text>
+        <text class="ts" x="472" y="840">documents, index_jobs</text>
+        <text class="ts" x="472" y="858">vectors: data_ds_{id}</text>
+        <text class="ts" x="472" y="876">HNSW index per table</text>
+
+        <rect class="n-ext" x="628" y="760" width="140" height="130" rx="8"/>
+        <text class="tt" x="638" y="784">LiteLLM proxy</text>
+        <text class="tm" x="638" y="802">LITELLM_BASE_URL</text>
+        <text class="ts" x="638" y="822">external service</text>
+        <text class="ts" x="638" y="840">OpenAI-compatible</text>
+        <text class="ts" x="638" y="858">caller's key, per call</text>
+
+        <path class="edge" d="M698 890 V927" marker-end="url(#a1)"/>
+        <rect class="n-ext" x="462" y="930" width="306" height="70" rx="8"/>
+        <text class="tt" x="478" y="954">AWS Bedrock models</text>
+        <text class="ts" x="478" y="972">chat: claude-sonnet / haiku / opus 5.5</text>
+        <text class="ts" x="478" y="988">embedding: none registered yet (blocker)</text>
+
+        <text class="tb" x="52" y="952">Parsers run out of process. Moving them to a GPU</text>
+        <text class="tb" x="52" y="970">node means changing DOCLING_URL / MINERU_URL only.</text>
+      </svg>
+    </div>
+  </section>
+
+  <section id="indexing" aria-labelledby="h-indexing">
+    <h2 id="h-indexing">Indexing a document</h2>
+    <p class="intro">Uploading is synchronous; indexing is a job. The job walks four stages and reports them in <code>stage</code> and <code>progress</code>, so a client can poll <code>GET …/jobs/{job_id}</code>.</p>
+    <ol class="steps">
+      <li class="step">
+        <div class="step-head"><h3><span class="step-num">1</span>Upload</h3><span class="pill">request</span></div>
+        <p>Streams the file to <code>tmp/</code>, enforces MAX_UPLOAD_MB (100) and computes sha256. A dataset keeps one copy per sha256. The original moves to <code>originals/{dataset}/</code>.</p>
+        <span class="where">POST …/documents · BlobStore</span>
+      </li>
+      <li class="step">
+        <div class="step-head"><h3><span class="step-num">2</span>Queue</h3><span class="pill">queued</span></div>
+        <p>An <code>index_jobs</code> row is written and the job id goes on the in-process queue. The caller's key stays in the runner's memory, keyed by job id.</p>
+        <span class="where">index=true or POST …/index · JobRunner</span>
+      </li>
+      <li class="step">
+        <div class="step-head"><h3><span class="step-num">3</span>Parse</h3><span class="pill">parsing · 0–40%</span></div>
+        <p>Markdown and text skip parsing. Other files go to Docling or MinerU over HTTP, gated by that parser's semaphore. A cached result for the same parser and options is reused unless <code>force_reparse</code> is set.</p>
+        <span class="where">ParserRegistry · parsed/{doc}/{cache_key}/</span>
+      </li>
+      <li class="step">
+        <div class="step-head"><h3><span class="step-num">4</span>Chunk</h3><span class="pill">chunking · 40–45%</span></div>
+        <p>Splits the markdown by headings to get a section path, re-splits large sections by sentence at the dataset's chunk size and overlap, and maps each chunk back to its page.</p>
+        <span class="where">services/chunking.py</span>
+      </li>
+      <li class="step">
+        <div class="step-head"><h3><span class="step-num">5</span>Embed</h3><span class="pill">embedding · 45–90%</span></div>
+        <p>Batches of 64 chunks go to LiteLLM with the dataset's model and document input type. Each vector's length must match the dataset's dimension.</p>
+        <span class="where">providers/embeddings.py</span>
+      </li>
+      <li class="step">
+        <div class="step-head"><h3><span class="step-num">6</span>Store</h3><span class="pill">storing · 90–100%</span></div>
+        <p>New nodes, tagged with this job's id, go into the dataset's vector table. Then the document's nodes from other jobs are deleted, so search never sees a gap.</p>
+        <span class="where">VectorStoreManager · vectors.data_ds_{id}</span>
+      </li>
+    </ol>
+
+    <div class="scale">
+      <svg viewBox="0 0 760 66" role="img" aria-labelledby="scale-title">
+        <title id="scale-title">Job progress by stage: parsing 0 to 40 percent, chunking 40 to 45, embedding 45 to 90, storing 90 to 100</title>
+        <text class="tc" x="158" y="14" text-anchor="middle">parsing</text>
+        <text class="tc" x="324.5" y="14" text-anchor="middle">chunk</text>
+        <text class="tc" x="509.5" y="14" text-anchor="middle">embedding</text>
+        <text class="tc" x="713" y="14" text-anchor="middle">storing</text>
+        <rect class="seg" x="10" y="22" width="296" height="18"/>
+        <rect class="seg" x="306" y="22" width="37" height="18"/>
+        <rect class="seg" x="343" y="22" width="333" height="18"/>
+        <rect class="seg-strong" x="343" y="22" width="333" height="18"/>
+        <rect class="seg" x="676" y="22" width="74" height="18"/>
+        <line class="tick" x1="10" y1="40" x2="10" y2="46"/>
+        <line class="tick" x1="306" y1="40" x2="306" y2="46"/>
+        <line class="tick" x1="343" y1="40" x2="343" y2="46"/>
+        <line class="tick" x1="676" y1="40" x2="676" y2="46"/>
+        <line class="tick" x1="750" y1="40" x2="750" y2="46"/>
+        <text class="tm" x="10" y="60">0%</text>
+        <text class="tm" x="306" y="60" text-anchor="middle">40</text>
+        <text class="tm" x="343" y="60" text-anchor="middle">45</text>
+        <text class="tm" x="676" y="60" text-anchor="middle">90</text>
+        <text class="tm" x="750" y="60" text-anchor="end">100%</text>
+      </svg>
+      <p class="scale-cap">Job <code>progress</code> to scale. Embedding moves smoothly batch by batch across 45–90%; the other stages jump at their boundaries.</p>
+    </div>
+
+    <div class="callouts">
+      <p class="callout"><strong>Failure or cancel.</strong> The job's own nodes are deleted and any earlier index of the document stays searchable. The document returns to <code>indexed</code> if it had one, otherwise <code>failed</code> (or <code>uploaded</code> when a queued job is canceled).</p>
+      <p class="callout"><strong>Server restart.</strong> Keys are never persisted, so queued and running jobs cannot continue. On startup they are marked <code>failed</code> with "interrupted", and the client resubmits with its key.</p>
+    </div>
+  </section>
+
+  <section id="query" aria-labelledby="h-query">
+    <h2 id="h-query">Answering a question</h2>
+    <p class="intro"><code>POST …/search</code> stops after the vector lookup and returns scored chunks. <code>POST …/query</code> continues to an LLM and returns an answer with <code>[n]</code> citations, either as one JSON body or as Server-Sent Events.</p>
+    <div class="diagram seq">
+      <svg viewBox="0 0 820 660" role="img" aria-labelledby="seq-title">
+        <title id="seq-title">Sequence of a /query request through rag-api, pgvector and LiteLLM, in streaming and non-streaming modes</title>
+        <defs>
+          <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker>
+        </defs>
+
+        <rect class="n-ext" x="20" y="16" width="140" height="40" rx="8"/><text class="tt" x="90" y="41" text-anchor="middle">Client</text>
+        <rect class="n-code" x="250" y="16" width="140" height="40" rx="8"/><text class="tt" x="320" y="41" text-anchor="middle">rag-api</text>
+        <rect class="n-cont" x="470" y="16" width="140" height="40" rx="8"/><text class="tt" x="540" y="41" text-anchor="middle">pgvector</text>
+        <rect class="n-ext" x="660" y="16" width="140" height="40" rx="8"/><text class="tt" x="730" y="41" text-anchor="middle">LiteLLM</text>
+
+        <line class="life" x1="90" y1="56" x2="90" y2="648"/>
+        <line class="life" x1="320" y1="56" x2="320" y2="648"/>
+        <line class="life" x1="540" y1="56" x2="540" y2="648"/>
+        <line class="life" x1="730" y1="56" x2="730" y2="648"/>
+        <rect class="act" x="314" y="80" width="12" height="558"/>
+
+        <path class="edge" d="M90 96 H311" marker-end="url(#a2)"/>
+        <text class="tc" x="201" y="89" text-anchor="middle">POST …/query</text>
+        <text class="ts" x="201" y="112" text-anchor="middle">{query, model, top_k, stream}</text>
+
+        <rect class="note" x="334" y="126" width="300" height="26" rx="4"/>
+        <text class="ts" x="344" y="143">check top_k ≤ 50 and filter keys, else 422</text>
+
+        <path class="edge" d="M326 184 H727" marker-end="url(#a2)"/>
+        <text class="ts" x="340" y="178">embed the query · dataset's model</text>
+        <path class="ret" d="M730 210 H329" marker-end="url(#a2)"/>
+        <text class="ts" x="720" y="204" text-anchor="end">query vector</text>
+
+        <path class="edge" d="M326 256 H537" marker-end="url(#a2)"/>
+        <text class="ts" x="340" y="250">top-k by cosine (HNSW)</text>
+        <text class="ts" x="340" y="272">user filters as bound params</text>
+        <path class="ret" d="M540 296 H329" marker-end="url(#a2)"/>
+        <text class="ts" x="530" y="290" text-anchor="end">chunks + scores</text>
+
+        <rect class="note" x="334" y="318" width="330" height="26" rx="4"/>
+        <text class="ts" x="344" y="335">join live document rows, number sources [1…n]</text>
+
+        <path class="edge" d="M326 380 H727" marker-end="url(#a2)"/>
+        <text class="ts" x="340" y="374">chat completion · model from the request</text>
+        <text class="ts" x="340" y="396">system prompt + numbered sources</text>
+
+        <rect class="frame" x="30" y="414" width="780" height="226" rx="4"/>
+        <path class="tag" d="M30 414 H82 V428 L74 436 H30 Z"/>
+        <text class="tm" x="40" y="430">alt</text>
+        <text class="tm" x="92" y="430">[stream: true]</text>
+
+        <path class="ret" d="M730 456 H329" marker-end="url(#a2)"/>
+        <text class="ts" x="720" y="450" text-anchor="end">first chunk</text>
+        <path class="ret" d="M314 482 H93" marker-end="url(#a2)"/>
+        <text class="tc" x="202" y="476" text-anchor="middle">event: sources</text>
+        <path class="ret" d="M730 508 H329" marker-end="url(#a2)"/>
+        <text class="ts" x="720" y="502" text-anchor="end">text deltas</text>
+        <path class="ret" d="M314 534 H93" marker-end="url(#a2)"/>
+        <text class="tc" x="202" y="528" text-anchor="middle">event: delta (repeats)</text>
+        <path class="ret" d="M314 560 H93" marker-end="url(#a2)"/>
+        <text class="tc" x="202" y="554" text-anchor="middle">event: done | error</text>
+
+        <line class="div" x1="30" y1="576" x2="810" y2="576"/>
+        <text class="tm" x="40" y="594">[stream: false]</text>
+        <path class="ret" d="M730 602 H329" marker-end="url(#a2)"/>
+        <text class="ts" x="720" y="596" text-anchor="end">answer + usage</text>
+        <path class="ret" d="M314 628 H93" marker-end="url(#a2)"/>
+        <text class="tc" x="202" y="622" text-anchor="middle">200 JSON answer</text>
+      </svg>
+    </div>
+    <div class="callouts">
+      <p class="callout"><strong>Errors before the first byte.</strong> The stream's first chunk is read before the response starts, so a bad key, an unknown model or an unreachable gateway still returns a normal HTTP error (<code>502 upstream_auth_failed</code>, <code>504 upstream_timeout</code>, …). Later failures arrive as <code>event: error</code>.</p>
+      <p class="callout"><strong>What <code>done</code> carries.</strong> The citation numbers found in the answer and the token usage reported by LiteLLM. The JSON mode returns the same fields together with the answer and the sources.</p>
+    </div>
+  </section>
+
+  <section id="decisions" aria-labelledby="h-decisions">
+    <h2 id="h-decisions">Design decisions</h2>
+    <dl class="decisions">
+      <div class="decision">
+        <dt>Authorization lives in the gateway</dt>
+        <dd>rag-service authenticates no one. Every dataset-scoped path starts with <code>/v1/datasets/{id}/</code>, so a gateway can authorize by prefix, and ids from another dataset return 404.</dd>
+      </div>
+      <div class="decision">
+        <dt>The caller's key, never stored</dt>
+        <dd>Each request carries <code>X-Model-API-Key</code>. The LiteLLM base URL is server configuration only, so no request can redirect someone's key elsewhere. Error messages redact key-like strings.</dd>
+      </div>
+      <div class="decision">
+        <dt>Embedding model fixed per dataset</dt>
+        <dd>Chosen at creation as a LiteLLM model name; its dimension is measured with one call. The <code>hash</code> provider is for local development only.</dd>
+      </div>
+      <div class="decision">
+        <dt>Answer model chosen per request</dt>
+        <dd><code>model</code> is required on <code>/query</code> and passed to LiteLLM unchanged. Access and cost limits come from the LiteLLM key's permissions, not from a server allowlist.</dd>
+      </div>
+      <div class="decision">
+        <dt>One vector table per dataset</dt>
+        <dd>Datasets can use different dimensions, deletes stay cheap, and each table gets its own HNSW index. Vectors and metadata live in separate schemas of one Postgres.</dd>
+      </div>
+      <div class="decision">
+        <dt>Filters never reach SQL as text</dt>
+        <dd>PGVectorStore's metadata filters interpolate values into SQL, so user filters are applied through <code>customize_query_fn</code> with bound parameters and JSONB containment.</dd>
+      </div>
+      <div class="decision">
+        <dt>Re-indexing without a gap</dt>
+        <dd>Nodes carry the job id. A new job inserts first and deletes the document's older nodes after, and a failed job removes only its own.</dd>
+      </div>
+      <div class="decision">
+        <dt>Parsers behind HTTP, results cached</dt>
+        <dd>Docling and MinerU run as their own containers. The cache key includes the parser options, MinerU's tier among them, so changing the tier invalidates old parses.</dd>
+      </div>
+    </dl>
+  </section>
+
+  <section id="next" aria-labelledby="h-next">
+    <h2 id="h-next">Where it is meant to change</h2>
+    <p class="intro">Each planned change from TODO.md replaces one component behind an interface that already exists.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Today</th><th>Seam</th><th>Planned</th><th>Phase</th></tr></thead>
+        <tbody>
+          <tr><td>Dense vector search only</td><td><code>retrieve()</code></td><td>Hybrid search with Korean-aware full text (pg_bigm, pgroonga or BM25) plus a reranker</td><td class="phase">2 · quality</td></tr>
+          <tr><td>Heading and sentence chunking</td><td><code>chunk_markdown</code></td><td>Structure-aware chunks from the cached Docling and MinerU JSON, tables kept whole</td><td class="phase">2 · quality</td></tr>
+          <tr><td>All top_k chunks sent to the LLM</td><td><code>answering.py</code></td><td>Prompt-size budget for <code>/query</code></td><td class="phase">2 · quality</td></tr>
+          <tr><td>In-process asyncio queue</td><td><code>JobRunner</code></td><td>arq or Celery with Redis; keys cross processes encrypted with a short TTL</td><td class="phase">4 · scale</td></tr>
+          <tr><td>Clients poll job status</td><td>jobs API</td><td>Progress over SSE or webhooks</td><td class="phase">4 · scale</td></tr>
+          <tr><td>Local-disk blob storage</td><td><code>BlobStore</code></td><td>S3-compatible storage; parsers fetch inputs by presigned URL</td><td class="phase">4 · scale</td></tr>
+          <tr><td>pgvector table per dataset</td><td><code>VectorStoreManager</code></td><td>Dedicated vector database if pgvector stops scaling</td><td class="phase">4 · scale</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>Drawn from the rag-service source on branch query-model-required (commit 7e067e4), README.md, API.md and TODO.md, 2026-11-05.</footer>
+</main>
+
+</body></html>
