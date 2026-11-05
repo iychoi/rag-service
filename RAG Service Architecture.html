@@ -208,7 +208,7 @@ footer { font-size: 0.82rem; color: var(--muted); border-top: 1px solid var(--li
 
 <main class="page">
   <header>
-    <p class="eyebrow">rag-service · drawn from commit 7e067e4</p>
+    <p class="eyebrow">rag-service · as of commit 749d284</p>
     <h1>RAG Service Architecture</h1>
     <p class="lede">One FastAPI process manages datasets and documents, indexes them into a pgvector table per dataset, and answers questions over them. Parsing runs in separate containers. Embeddings and answers go through an external LiteLLM proxy with the caller's own key.</p>
     <p class="status">Status: everything below works end to end against a mocked LiteLLM. The real LiteLLM has no embedding model registered yet (as of 2026-11-04), which blocks verification with real embeddings.</p>
@@ -462,7 +462,7 @@ footer { font-size: 0.82rem; color: var(--muted); border-top: 1px solid var(--li
 
   <section id="query" aria-labelledby="h-query">
     <h2 id="h-query">Answering a question</h2>
-    <p class="intro"><code>POST …/search</code> stops after the vector lookup and returns scored chunks. <code>POST …/query</code> continues to an LLM and returns an answer with <code>[n]</code> citations, either as one JSON body or as Server-Sent Events.</p>
+    <p class="intro"><code>POST …/search</code> stops after the vector lookup and returns scored chunks. <code>POST …/query</code> continues to an LLM and returns an answer with <code>[n]</code> citations, either as one JSON body or as Server-Sent Events. Before the LLM call, sources are cut to a token budget (<code>max_source_tokens</code>, default 16000), best first, and the number left out is returned as <code>sources_dropped</code>.</p>
     <div class="diagram seq">
       <svg viewBox="0 0 820 660" role="img" aria-labelledby="seq-title">
         <title id="seq-title">Sequence of a /query request through rag-api, pgvector and LiteLLM, in streaming and non-streaming modes</title>
@@ -500,7 +500,7 @@ footer { font-size: 0.82rem; color: var(--muted); border-top: 1px solid var(--li
         <text class="ts" x="530" y="290" text-anchor="end">chunks + scores</text>
 
         <rect class="note" x="334" y="318" width="330" height="26" rx="4"/>
-        <text class="ts" x="344" y="335">join live document rows, number sources [1…n]</text>
+        <text class="ts" x="344" y="335">join live documents, fit sources to token budget</text>
 
         <path class="edge" d="M326 380 H727" marker-end="url(#a2)"/>
         <text class="ts" x="340" y="374">chat completion · model from the request</text>
@@ -583,7 +583,6 @@ footer { font-size: 0.82rem; color: var(--muted); border-top: 1px solid var(--li
         <tbody>
           <tr><td>Dense vector search only</td><td><code>retrieve()</code></td><td>Hybrid search with Korean-aware full text (pg_bigm, pgroonga or BM25) plus a reranker</td><td class="phase">2 · quality</td></tr>
           <tr><td>Heading and sentence chunking</td><td><code>chunk_markdown</code></td><td>Structure-aware chunks from the cached Docling and MinerU JSON, tables kept whole</td><td class="phase">2 · quality</td></tr>
-          <tr><td>All top_k chunks sent to the LLM</td><td><code>answering.py</code></td><td>Prompt-size budget for <code>/query</code></td><td class="phase">2 · quality</td></tr>
           <tr><td>In-process asyncio queue</td><td><code>JobRunner</code></td><td>arq or Celery with Redis; keys cross processes encrypted with a short TTL</td><td class="phase">4 · scale</td></tr>
           <tr><td>Clients poll job status</td><td>jobs API</td><td>Progress over SSE or webhooks</td><td class="phase">4 · scale</td></tr>
           <tr><td>Local-disk blob storage</td><td><code>BlobStore</code></td><td>S3-compatible storage; parsers fetch inputs by presigned URL</td><td class="phase">4 · scale</td></tr>
@@ -593,7 +592,7 @@ footer { font-size: 0.82rem; color: var(--muted); border-top: 1px solid var(--li
     </div>
   </section>
 
-  <footer>Drawn from the rag-service source on branch query-model-required (commit 7e067e4), README.md, API.md and TODO.md, 2026-11-05.</footer>
+  <footer>Drawn from the rag-service source on branch query-model-required (commit 749d284), README.md, API.md and TODO.md, 2026-11-05.</footer>
 </main>
 
 </body></html>
