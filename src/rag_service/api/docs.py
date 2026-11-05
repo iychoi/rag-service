@@ -82,6 +82,7 @@ _EXAMPLE_MESSAGES = {
     "invalid_parser_options": "unsupported docling options: ['to_formats'] (allowed: [...])",
     "invalid_filter": "invalid metadata filter key 'a b'",
     "top_k_too_large": "top_k must be <= 50",
+    "max_source_tokens_too_large": "max_source_tokens must be <= 100000",
     "parser_unavailable": "parser 'docling' is unavailable",
     "db_unavailable": "database is not reachable",
     "upstream_auth_failed": "model provider rejected the API key",

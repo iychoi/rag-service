@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     llm_timeout_s: float = 120.0
     llm_max_output_tokens: int = 1024
     llm_context_window: int = 200_000
+    # /query source budget: retrieved chunks are sent best first until this many tokens (counted
+    # with the chunking tokenizer, so an estimate of what the LLM bills). Requests may set
+    # max_source_tokens up to query_max_source_tokens.
+    query_source_tokens: int = 16_000
+    query_max_source_tokens: int = 100_000
 
     @property
     def max_upload_bytes(self) -> int:

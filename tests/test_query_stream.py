@@ -68,6 +68,7 @@ async def test_stream_events(client: httpx.AsyncClient, dataset: dict) -> None:
     sources = events[0][1]
     assert sources["query"] == "계약 해지 조건은?"
     assert [s["id"] for s in sources["sources"]] == [1, 2, 3]
+    assert sources["sources_dropped"] == 0
 
     deltas = "".join(d["text"] for e, d in events if e == "delta")
     assert deltas == "".join(pieces)
@@ -123,7 +124,7 @@ async def test_stream_without_sources_skips_llm(client: httpx.AsyncClient, datas
         )
     assert r.status_code == 200 and not route.called
     assert parse_sse(r.text) == [
-        ("sources", {"query": "x", "sources": []}),
+        ("sources", {"query": "x", "sources": [], "sources_dropped": 0}),
         ("done", {"answer": None, "model": None, "citations": [], "usage": None}),
     ]
 

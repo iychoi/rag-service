@@ -32,11 +32,11 @@ Current state: dataset/document management, indexing jobs (Docling and MinerU on
 
 - [ ] **Cohere Embed v4 vs. Titan V2**: `input_type` per dataset is implemented (sent as `extra_body`); compare Korean retrieval quality and decide the default model.
 - [x] **`POST /v1/datasets/{dataset_id}/query`**: retrieval + LLM answer with `[n]` citations (`services/answering.py`, `providers/llms.py`). Mocked-LiteLLM tests only.
-  - Settings: `LITELLM_BASE_URL`, `LLM_TIMEOUT_S`, `LLM_MAX_OUTPUT_TOKENS`. The answering model is required in each request (`model`, no server default) and passed to LiteLLM as-is; model access and cost control belong to LiteLLM key permissions.
+  - Settings: `LITELLM_BASE_URL`, `LLM_TIMEOUT_S`, `LLM_MAX_OUTPUT_TOKENS`, `QUERY_SOURCE_TOKENS`, `QUERY_MAX_SOURCE_TOKENS`. The answering model is required in each request (`model`, no server default) and passed to LiteLLM as-is; model access and cost control belong to LiteLLM key permissions.
   - Models currently in LiteLLM and their price per 1M tokens (input/output): `claude-sonnet-5-5` $2.20/$11.00, `claude-haiku-5-5` $0.11/$0.55, `claude-opus-5-5` $4.40/$22.00 (too costly as default).
 - [ ] **Verify `/query` against the real LiteLLM** (needs the LiteLLM base URL and a key): check the answer language, citation format, and token usage reporting with `claude-sonnet-5-5`.
 - [x] **`/query` streaming**: `"stream": true` returns Server-Sent Events (`sources`, `delta`, `done` / `error`). Verified incremental delivery through uvicorn with a slow mock LiteLLM; not yet against the real LiteLLM.
-- [ ] **`/query` prompt-size budget**: today all `top_k` chunks are sent; with large chunks and `top_k` up to 50 this can get expensive.
+- [x] **`/query` prompt-size budget**: `max_source_tokens` per request (default `QUERY_SOURCE_TOKENS` 16000, at most `QUERY_MAX_SOURCE_TOKENS` 100000). Sources are sent best first until the budget; the rest are counted in `sources_dropped`. Tokens are counted with the chunking tokenizer (tiktoken), so the budget is an estimate; compare with `usage.input_tokens` when verifying against the real LiteLLM.
 - [ ] **Query rewriting / contextual retrieval** with `claude-haiku-5-5`, e.g. add a short document-context summary to each chunk at indexing time (needs an `LLM_FAST_MODEL` setting).
 - [ ] **Structure-aware chunking**:
   - Docling: the DoclingDocument JSON is already cached as `raw.json` in the parse cache; use `DoclingNodeParser` (`llama-index-node-parser-docling`, needs only `docling-core`, no torch).

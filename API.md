@@ -946,6 +946,7 @@ Request body:
 | `filters` | object | no | | Same as [search filters](#search-a-dataset) (`document_ids`, `metadata`). |
 | `model` | string | yes | | LiteLLM model that writes the answer, e.g. `claude-sonnet-5-5` or `claude-haiku-5-5`. Passed as-is; there is no server default. An unknown model returns LiteLLM's error as `502 upstream_error`. |
 | `max_output_tokens` | integer | no | `LLM_MAX_OUTPUT_TOKENS` (1024) | 1–8192. |
+| `max_source_tokens` | integer | no | `QUERY_SOURCE_TOKENS` (16000) | Token budget for the sources sent to the LLM; 1 to `QUERY_MAX_SOURCE_TOKENS` (100000). See [Source budget](#source-budget). |
 | `stream` | boolean | no | `false` | Stream the answer as Server-Sent Events. See [Streaming](#streaming-the-answer). |
 
 ```bash
@@ -992,9 +993,12 @@ curl -s -X POST $B/datasets/52967db904d44a09b33f88b3c9f64a6a/query \
       "metadata": {"year": 2025, "category": "contract"}
     }
   ],
+  "sources_dropped": 0,
   "usage": {"input_tokens": 412, "output_tokens": 23}
 }
 ```
+
+`sources_dropped` is the number of retrieved chunks left out to stay within the source budget.
 
 A faster, cheaper model with a shorter answer:
 
@@ -1006,7 +1010,20 @@ curl -s -X POST $B/datasets/$DS/query -H 'content-type: application/json' -H "X-
 When nothing is retrieved (empty dataset, or filters match nothing), the LLM is not called:
 
 ```json
-{"query": "x", "answer": null, "model": null, "citations": [], "sources": [], "usage": null}
+{"query": "x", "answer": null, "model": null, "citations": [], "sources": [], "sources_dropped": 0, "usage": null}
+```
+
+##### Source budget
+
+`top_k` caps how many chunks are retrieved; `max_source_tokens` caps how much of them is sent to the LLM. Chunks are added best first until the next one would exceed the budget. The rest are left out of the prompt and of `sources`, and counted in `sources_dropped`. The best chunk is always sent, even if it alone exceeds the budget, and the sent sources keep ids `1..n`.
+
+Tokens are counted with the tokenizer used for chunking (tiktoken `cl100k_base`), not the LLM's own, so the budget is an estimate. Korean text in particular can count differently. `usage.input_tokens` in the response reports what the LLM actually counted.
+
+The default (16000) leaves typical requests alone (`top_k` 5 × 512-token chunks is about 2,600 tokens) and stops a large `top_k` with large chunks from building a prompt that is costly or exceeds the model's context window.
+
+```bash
+curl -s -X POST $B/datasets/$DS/query -H 'content-type: application/json' -H "X-Model-API-Key: $KEY" \
+  -d '{"query": "계약 해지 조건은?", "model": "claude-sonnet-5-5", "top_k": 20, "max_source_tokens": 4000}'
 ```
 
 Errors:
@@ -1015,6 +1032,7 @@ Errors:
 |--------|------|------|
 | 400 | `missing_model_api_key` | No `X-Model-API-Key`. |
 | 422 | `validation_error`, `top_k_too_large`, `invalid_filter` | As for search. |
+| 422 | `max_source_tokens_too_large` | `max_source_tokens` exceeds `QUERY_MAX_SOURCE_TOKENS`. |
 | 502 | `upstream_auth_failed` | LiteLLM rejected the key (401/403). |
 | 502 | `upstream_error` | LiteLLM returned another error (e.g. unknown model, rate limit). The upstream status and message are included, with key-like strings redacted. |
 | 502 | `upstream_unreachable` | LiteLLM could not be reached. |
@@ -1033,7 +1051,7 @@ Events, in order:
 
 | Event | `data` | When |
 |-------|--------|------|
-| `sources` | `{"query", "sources": [QuerySource...]}` | First, right after retrieval. Lets clients show sources before the answer arrives. |
+| `sources` | `{"query", "sources": [QuerySource...], "sources_dropped"}` | First, right after retrieval. Lets clients show sources before the answer arrives. `sources` are the chunks sent to the LLM after the [source budget](#source-budget). |
 | `delta` | `{"text": "..."}` | Zero or more times: the next piece of answer text. Join all `text` values for the full answer. |
 | `done` | `{"answer", "model", "citations", "usage"}` | Last, on success. `answer` is the full text; `citations` are the source ids it cites. |
 | `error` | `{"error": {"code", "message"}}` | Instead of `done`, if the LLM fails after streaming has started. The stream then ends. |
@@ -1050,7 +1068,7 @@ curl -sN -X POST $B/datasets/$DS/query \
 
 ```
 event: sources
-data: {"query": "How can the agreement be terminated?", "sources": [{"id": 1, "score": 0.694, "text": "## Article 5. Termination\n\nEither party may terminate with 30 days written notice.", "document_id": "bbd713912b614848a8f0def3f73aa304", "filename": "contract.pdf", "page": 2, "section_path": ["Article 5. Termination"], "chunk_index": 1, "metadata": {"year": 2025}}]}
+data: {"query": "How can the agreement be terminated?", "sources": [{"id": 1, "score": 0.694, "text": "## Article 5. Termination\n\nEither party may terminate with 30 days written notice.", "document_id": "bbd713912b614848a8f0def3f73aa304", "filename": "contract.pdf", "page": 2, "section_path": ["Article 5. Termination"], "chunk_index": 1, "metadata": {"year": 2025}}], "sources_dropped": 0}
 
 event: delta
 data: {"text": "Either party may terminate"}
@@ -1236,6 +1254,7 @@ Used automatically for `.md`, `.markdown`, `.txt`. Takes no options.
 | 422 | `invalid_parser_options` | Unknown parser option or wrong value type. |
 | 422 | `invalid_filter` | Malformed `document_ids` or metadata filter key. |
 | 422 | `top_k_too_large` | `top_k` exceeds `MAX_TOP_K`. |
+| 422 | `max_source_tokens_too_large` | `max_source_tokens` exceeds `QUERY_MAX_SOURCE_TOKENS` (`/query`). |
 | 502 | `upstream_auth_failed` | LiteLLM rejected the `X-Model-API-Key`. |
 | 502 | `upstream_error` | LiteLLM returned an error for an embedding or LLM call. |
 | 502 | `upstream_unreachable` | LiteLLM could not be reached. |

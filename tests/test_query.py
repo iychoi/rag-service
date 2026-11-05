@@ -6,7 +6,14 @@ import httpx
 import respx
 
 from rag_service.models.schemas import SearchResult
-from rag_service.services.answering import build_user_prompt, extract_citations, number_sources
+from rag_service.services.answering import (
+    build_user_prompt,
+    count_tokens,
+    extract_citations,
+    format_source,
+    number_sources,
+    select_sources,
+)
 from rag_service.state import AppState
 from tests.conftest import FIXTURES, LITELLM_TEST_URL, wait_for_job
 
@@ -64,6 +71,29 @@ def test_prompt_and_citations() -> None:
     assert prompt.endswith("Question: what?")
     assert extract_citations("x [2] y [1][2] z [7] [0]", 2) == [2, 1]
     assert extract_citations("no refs", 3) == []
+
+
+def test_select_sources_fits_budget() -> None:
+    results = [_result("a" * 10), _result("b" * 10), _result("c" * 10)]
+    size = len(format_source(number_sources(results[:1])[0]))  # every block has the same length
+
+    def count(text: str) -> int:
+        return len(text)
+
+    # Everything fits
+    sources, dropped = select_sources(results, size * 3, count)
+    assert [s.id for s in sources] == [1, 2, 3] and dropped == 0
+    # Stops at the first block that does not fit; ids stay 1..n
+    sources, dropped = select_sources(results, size * 2 + 1, count)
+    assert [s.text for s in sources] == ["a" * 10, "b" * 10] and dropped == 1
+    # The best source is always kept, even over budget
+    sources, dropped = select_sources(results, 1, count)
+    assert [s.id for s in sources] == [1] and dropped == 2
+    assert select_sources([], 1, count) == ([], 0)
+
+
+def test_count_tokens_uses_bundled_tokenizer() -> None:
+    assert 0 < count_tokens("계약 해지 조건은?") < 20
 
 
 # ---------------- API ----------------
@@ -127,6 +157,30 @@ async def test_query_model_selection(client: httpx.AsyncClient, dataset: dict) -
     assert payload["model"] == "claude-haiku-5-5" and payload["max_tokens"] == 200
 
 
+async def test_query_source_budget(client: httpx.AsyncClient, dataset: dict) -> None:
+    ds_id = await indexed_dataset(client, dataset)
+    url = f"/datasets/{ds_id}/query"
+    with respx.mock() as router:
+        route = router.post(CHAT_URL).respond(json=chat_completion("해지 가능 [1]."))
+        r = await client.post(url, headers={"X-Model-API-Key": KEY},
+                              json={"query": "계약 해지 조건은?", "model": MODEL, "top_k": 3})  # fmt: skip
+        assert r.status_code == 200, r.text
+        assert len(r.json()["sources"]) == 3 and r.json()["sources_dropped"] == 0  # default budget
+
+        r = await client.post(url, headers={"X-Model-API-Key": KEY},
+                              json={"query": "계약 해지 조건은?", "model": MODEL, "top_k": 3,
+                                    "max_source_tokens": 1})  # fmt: skip
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert [s["id"] for s in body["sources"]] == [1] and body["sources_dropped"] == 2
+    user = json.loads(route.calls.last.request.content)["messages"][1]["content"]
+    assert "[1] (" in user and "[2] (" not in user
+
+    r = await client.post(url, headers={"X-Model-API-Key": KEY},
+                          json={"query": "x", "model": MODEL, "max_source_tokens": 100_001})  # fmt: skip
+    assert r.status_code == 422 and r.json()["error"]["code"] == "max_source_tokens_too_large"
+
+
 async def test_query_requires_key(client: httpx.AsyncClient, dataset: dict) -> None:
     r = await client.post(f"/datasets/{dataset['id']}/query", json={"query": "해지", "model": MODEL})
     assert r.status_code == 400 and r.json()["error"]["code"] == "missing_model_api_key"
@@ -149,7 +203,7 @@ async def test_query_without_sources_skips_llm(client: httpx.AsyncClient, datase
         )
     assert r.status_code == 200
     assert r.json() == {"query": "x", "answer": None, "model": None, "citations": [],
-                        "sources": [], "usage": None}  # fmt: skip
+                        "sources": [], "sources_dropped": 0, "usage": None}  # fmt: skip
     assert not route.called
 
 

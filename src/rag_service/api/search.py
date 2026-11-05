@@ -25,10 +25,11 @@ from rag_service.services.answering import (
     StreamResult,
     extract_citations,
     generate_answer,
-    number_sources,
     open_answer_stream,
+    select_sources,
 )
 from rag_service.services.retrieval import retrieve, validate_retrieval_request
+from rag_service.state import AppState
 
 router = APIRouter(tags=["search"])
 
@@ -37,7 +38,8 @@ _SSE_EXAMPLE = (
     'data: {"query": "How can the agreement be terminated?", "sources": [{"id": 1, "score": 0.694, '
     '"text": "## Article 5. Termination\\n\\nEither party may terminate with 30 days written notice.", '
     '"document_id": "bbd713912b614848a8f0def3f73aa304", "filename": "contract.pdf", "page": 2, '
-    '"section_path": ["Article 5. Termination"], "chunk_index": 1, "metadata": {"year": 2025}}]}\n\n'
+    '"section_path": ["Article 5. Termination"], "chunk_index": 1, "metadata": {"year": 2025}}], '
+    '"sources_dropped": 0}\n\n'
     "event: delta\n"
     'data: {"text": "Either party may terminate"}\n\n'
     "event: delta\n"
@@ -86,6 +88,8 @@ async def search(
     "LLM call needs it. `model` (required) is any LiteLLM model name and is passed as-is; an unknown "
     "model returns LiteLLM's error as 502 upstream_error. If nothing "
     "is retrieved, the LLM is not called and `answer` is null.\n\n"
+    "Retrieved chunks are sent best first until `max_source_tokens` (default QUERY_SOURCE_TOKENS) "
+    "would be exceeded; the rest are left out and counted in `sources_dropped`.\n\n"
     "With `\"stream\": true` the response is `text/event-stream` (Server-Sent Events): `sources` "
     "(QueryStreamSources), then `delta` events (QueryStreamDelta) with answer text, then `done` "
     "(QueryStreamDone). Errors before streaming starts (validation, key, retrieval, the LLM rejecting "
@@ -95,7 +99,12 @@ async def search(
         {
             400: ["missing_model_api_key"],
             404: ["dataset_not_found"],
-            422: ["validation_error", "top_k_too_large", "invalid_filter"],
+            422: [
+                "validation_error",
+                "top_k_too_large",
+                "max_source_tokens_too_large",
+                "invalid_filter",
+            ],
             502: ["upstream_auth_failed", "upstream_error", "upstream_unreachable"],
             503: ["litellm_not_configured"],
             504: ["upstream_timeout"],
@@ -156,11 +165,12 @@ async def query(
         raise APIError(503, "litellm_not_configured", "LITELLM_BASE_URL is not configured")
     model = body.model  # passed to LiteLLM as-is; its errors are returned
     validate_retrieval_request(state, body.top_k, body.filters)
+    max_source_tokens = _source_budget(state, body.max_source_tokens)
     if not api_key:
         raise APIError(400, "missing_model_api_key", "X-Model-API-Key header is required")
 
     results = await retrieve(state, session, ds, body.query, body.top_k, body.filters, api_key)
-    sources = number_sources(results)
+    sources, dropped = select_sources(results, max_source_tokens)
     llm_args: dict[str, Any] = dict(
         query=body.query,
         sources=sources,
@@ -178,7 +188,7 @@ async def query(
             # Opens the upstream request now, so its errors become normal JSON responses
             stream = await open_answer_stream(**llm_args)
         return StreamingResponse(
-            _sse_query(body.query, sources, model, stream),
+            _sse_query(body.query, sources, dropped, model, stream),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
@@ -194,8 +204,22 @@ async def query(
         model=model,
         citations=extract_citations(answer, len(sources)),
         sources=sources,
+        sources_dropped=dropped,
         usage=usage,
     )
+
+
+def _source_budget(state: AppState, requested: int | None) -> int:
+    settings = state.settings
+    if requested is None:
+        return min(settings.query_source_tokens, settings.query_max_source_tokens)
+    if requested > settings.query_max_source_tokens:
+        raise APIError(
+            422,
+            "max_source_tokens_too_large",
+            f"max_source_tokens must be <= {settings.query_max_source_tokens}",
+        )
+    return requested
 
 
 def _sse(event: str, payload: BaseModel | dict[str, Any]) -> str:
@@ -206,10 +230,14 @@ def _sse(event: str, payload: BaseModel | dict[str, Any]) -> str:
 async def _sse_query(
     query_text: str,
     sources: list[QuerySource],
+    sources_dropped: int,
     model: str,
     stream: tuple[AsyncIterator[str], StreamResult] | None,
 ) -> AsyncIterator[str]:
-    yield _sse("sources", QueryStreamSources(query=query_text, sources=sources))
+    yield _sse(
+        "sources",
+        QueryStreamSources(query=query_text, sources=sources, sources_dropped=sources_dropped),
+    )
     if stream is None:  # nothing retrieved: the LLM is not called
         yield _sse("done", QueryStreamDone(answer=None, model=None, citations=[], usage=None))
         return

@@ -1,12 +1,14 @@
-"""Answer generation for /query: prompt with numbered sources, call the LLM (whole or streamed), extract citations."""
+"""Answer generation for /query: fit sources to a token budget, prompt with numbered sources, call
+the LLM (whole or streamed), extract citations."""
 
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import NoReturn
 
 import httpx
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
+from llama_index.core.utils import get_tokenizer
 
 from rag_service.models.schemas import QuerySource, SearchResult, TokenUsage
 from rag_service.providers.llms import build_llm
@@ -28,15 +30,45 @@ def number_sources(results: list[SearchResult]) -> list[QuerySource]:
     return [QuerySource(id=i, **r.model_dump()) for i, r in enumerate(results, start=1)]
 
 
+def count_tokens(text: str) -> int:
+    """Token count with the tokenizer chunking uses (tiktoken, bundled with LlamaIndex).
+
+    Claude's tokenizer differs, so this is an estimate of what the LLM bills.
+    """
+    return len(get_tokenizer()(text))
+
+
+def select_sources(
+    results: list[SearchResult],
+    max_tokens: int,
+    count: Callable[[str], int] = count_tokens,
+) -> tuple[list[QuerySource], int]:
+    """Number `results` (best first) and keep them while their prompt blocks fit in `max_tokens`.
+
+    Stops at the first block that does not fit, so the sources stay the best-scoring prefix and
+    their ids stay 1..n. The first source is always kept, even if it alone exceeds the budget.
+    Returns (sources, number of results dropped).
+    """
+    sources = number_sources(results)
+    used = 0
+    for i, s in enumerate(sources):
+        used += count(format_source(s))
+        if i > 0 and used > max_tokens:
+            return sources[:i], len(sources) - i
+    return sources, 0
+
+
+def format_source(s: QuerySource) -> str:
+    where = [s.filename or "unknown file"]
+    if s.page is not None:
+        where.append(f"page {s.page}")
+    if s.section_path:
+        where.append(" > ".join(s.section_path))
+    return f"[{s.id}] ({', '.join(where)})\n{s.text.strip()}"
+
+
 def build_user_prompt(query: str, sources: list[QuerySource]) -> str:
-    blocks = []
-    for s in sources:
-        where = [s.filename or "unknown file"]
-        if s.page is not None:
-            where.append(f"page {s.page}")
-        if s.section_path:
-            where.append(" > ".join(s.section_path))
-        blocks.append(f"[{s.id}] ({', '.join(where)})\n{s.text.strip()}")
+    blocks = [format_source(s) for s in sources]
     return "Sources:\n\n" + "\n\n".join(blocks) + f"\n\nQuestion: {query}"
 
 

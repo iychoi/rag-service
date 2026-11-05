@@ -490,6 +490,14 @@ class QueryRequest(BaseModel):
     max_output_tokens: int | None = Field(
         default=None, ge=1, le=8192, description="Answer length limit. Default: LLM_MAX_OUTPUT_TOKENS"
     )
+    max_source_tokens: int | None = Field(
+        default=None,
+        ge=1,
+        description="Token budget for the sources sent to the LLM. Retrieved chunks are added best "
+        "first until the next one would exceed it; the best chunk is always sent. Counted with the "
+        "chunking tokenizer, so it approximates the LLM's own count. "
+        "Default: QUERY_SOURCE_TOKENS (16000); at most QUERY_MAX_SOURCE_TOKENS (100000).",
+    )
     stream: bool = Field(
         default=False,
         description="Stream the answer as Server-Sent Events (text/event-stream): a `sources` event, "
@@ -528,6 +536,7 @@ class QueryResponse(BaseModel):
                             "metadata": {"year": 2025, "category": "contract"},
                         }
                     ],
+                    "sources_dropped": 0,
                     "usage": {"input_tokens": 412, "output_tokens": 23},
                 }
             ]
@@ -542,6 +551,9 @@ class QueryResponse(BaseModel):
     model: str | None = Field(description="Model that produced the answer; null if not called")
     citations: list[int] = Field(description="Source ids cited in the answer, in order of first use")
     sources: list[QuerySource] = Field(description="Retrieved chunks given to the LLM")
+    sources_dropped: int = Field(
+        default=0, description="Retrieved chunks left out to stay within max_source_tokens"
+    )
     usage: TokenUsage | None = Field(default=None, description="Token usage reported by LiteLLM")
 
 
@@ -553,6 +565,9 @@ class QueryStreamSources(BaseModel):
 
     query: str
     sources: list[QuerySource]
+    sources_dropped: int = Field(
+        default=0, description="Retrieved chunks left out to stay within max_source_tokens"
+    )
 
 
 class QueryStreamDelta(BaseModel):

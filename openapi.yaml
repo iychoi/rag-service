@@ -1498,6 +1498,10 @@ paths:
         called and `answer` is null.
 
 
+        Retrieved chunks are sent best first until `max_source_tokens` (default QUERY_SOURCE_TOKENS) would
+        be exceeded; the rest are left out and counted in `sources_dropped`.
+
+
         With `"stream": true` the response is `text/event-stream` (Server-Sent Events): `sources` (QueryStreamSources),
         then `delta` events (QueryStreamDelta) with answer text, then `done` (QueryStreamDone). Errors
         before streaming starts (validation, key, retrieval, the LLM rejecting the request) are normal
@@ -1566,7 +1570,7 @@ paths:
                 0.694, "text": "## Article 5. Termination\n\nEither party may terminate with 30 days written
                 notice.", "document_id": "bbd713912b614848a8f0def3f73aa304", "filename": "contract.pdf",
                 "page": 2, "section_path": ["Article 5. Termination"], "chunk_index": 1, "metadata": {"year":
-                2025}}]}
+                2025}}], "sources_dropped": 0}
 
 
                 event: delta
@@ -1612,7 +1616,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
-          description: 'Invalid request. Error codes: `validation_error`, `top_k_too_large`, `invalid_filter`'
+          description: 'Invalid request. Error codes: `validation_error`, `top_k_too_large`, `max_source_tokens_too_large`,
+            `invalid_filter`'
           content:
             application/json:
               examples:
@@ -1626,6 +1631,11 @@ paths:
                     error:
                       code: top_k_too_large
                       message: top_k must be <= 50
+                max_source_tokens_too_large:
+                  value:
+                    error:
+                      code: max_source_tokens_too_large
+                      message: max_source_tokens must be <= 100000
                 invalid_filter:
                   value:
                     error:
@@ -2489,6 +2499,15 @@ components:
           title: Max Output Tokens
           description: 'Answer length limit. Default: LLM_MAX_OUTPUT_TOKENS'
           nullable: true
+        max_source_tokens:
+          type: integer
+          minimum: 1.0
+          title: Max Source Tokens
+          description: 'Token budget for the sources sent to the LLM. Retrieved chunks are added best
+            first until the next one would exceed it; the best chunk is always sent. Counted with the
+            chunking tokenizer, so it approximates the LLM''s own count. Default: QUERY_SOURCE_TOKENS
+            (16000); at most QUERY_MAX_SOURCE_TOKENS (100000).'
+          nullable: true
         stream:
           type: boolean
           title: Stream
@@ -2537,6 +2556,11 @@ components:
           type: array
           title: Sources
           description: Retrieved chunks given to the LLM
+        sources_dropped:
+          type: integer
+          title: Sources Dropped
+          description: Retrieved chunks left out to stay within max_source_tokens
+          default: 0
         usage:
           description: Token usage reported by LiteLLM
           nullable: true
@@ -2572,6 +2596,7 @@ components:
 
 
             Either party may terminate with 30 days written notice.'
+        sources_dropped: 0
         usage:
           input_tokens: 412
           output_tokens: 23
@@ -2677,6 +2702,11 @@ components:
             $ref: '#/components/schemas/QuerySource'
           title: Sources
           type: array
+        sources_dropped:
+          default: 0
+          description: Retrieved chunks left out to stay within max_source_tokens
+          title: Sources Dropped
+          type: integer
       required:
       - query
       - sources
