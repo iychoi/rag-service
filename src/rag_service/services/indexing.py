@@ -25,7 +25,7 @@ from rag_service.config import Settings
 from rag_service.providers.embeddings import build_embedding
 from rag_service.providers.upstream import upstream_api_error
 from rag_service.services.embedding import spec_from_dataset
-from rag_service.services.chunking import Chunk, chunk_markdown
+from rag_service.services.chunking import Chunk, chunk_document
 from rag_service.storage.blob import BlobStore
 from rag_service.storage.vector import VectorStoreManager
 
@@ -91,7 +91,7 @@ class IndexingPipeline:
             await self._update_job(job_id, stage=JobStage.chunking, progress=_P_PARSE_END)
 
             chunks = await asyncio.to_thread(
-                chunk_markdown, parsed, ds.chunk_size, ds.chunk_overlap
+                chunk_document, parsed, parser_name, ds.chunk_size, ds.chunk_overlap
             )
             await self._update_job(job_id, stage=JobStage.embedding, progress=_P_CHUNK_END)
 

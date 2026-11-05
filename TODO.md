@@ -38,9 +38,8 @@ Current state: dataset/document management, indexing jobs (Docling and MinerU on
 - [x] **`/query` streaming**: `"stream": true` returns Server-Sent Events (`sources`, `delta`, `done` / `error`). Verified incremental delivery through uvicorn with a slow mock LiteLLM; not yet against the real LiteLLM.
 - [x] **`/query` prompt-size budget**: `max_source_tokens` per request (default `QUERY_SOURCE_TOKENS` 16000, at most `QUERY_MAX_SOURCE_TOKENS` 100000). Sources are sent best first until the budget; the rest are counted in `sources_dropped`. Tokens are counted with the chunking tokenizer (tiktoken), so the budget is an estimate; compare with `usage.input_tokens` when verifying against the real LiteLLM.
 - [ ] **Query rewriting / contextual retrieval** with `claude-haiku-5-5`, e.g. add a short document-context summary to each chunk at indexing time (needs an `LLM_FAST_MODEL` setting).
-- [ ] **Structure-aware chunking**:
-  - Docling: the DoclingDocument JSON is already cached as `raw.json` in the parse cache; use `DoclingNodeParser` (`llama-index-node-parser-docling`, needs only `docling-core`, no torch).
-  - MinerU: `structured_content.json` (cached as `raw.json`) has per-page typed blocks with bboxes; use it to keep tables as single chunks and get exact page numbers.
+- [x] **Structure-aware chunking** (`services/chunking.py`): Docling's DoclingDocument JSON and MinerU's `structured_content.json` (both cached as `raw.json`) become blocks in reading order with exact pages; tables are chunks of their own, split between rows with the header repeated when too large. Passthrough files and unrecognized structure fall back to markdown chunking. `DoclingNodeParser` was not used: its useful chunker (HybridChunker) needs a HuggingFace tokenizer or tree-sitter extras, `docling-core` adds pandas, and MinerU needed its own code anyway.
+  - [ ] Compare retrieval quality on real documents (especially Korean contracts with tables) against markdown chunking.
 - [ ] **Hybrid search + reranking**: `PGVectorStore(hybrid_search=True)` uses PostgreSQL full-text search, whose default configs do not tokenize Korean; evaluate `pg_bigm` / `pgroonga` or a separate BM25 index. Evaluate a reranker (Bedrock rerank models via LiteLLM).
 
 ---

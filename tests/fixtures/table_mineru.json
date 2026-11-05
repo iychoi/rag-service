@@ -1,0 +1,170 @@
+{
+ "pages": [
+  {
+   "page_idx": 0,
+   "blocks": [
+    {
+     "type": "paragraph_title",
+     "bbox": [
+      0.114,
+      0.071,
+      0.47,
+      0.096
+     ],
+     "level": 2,
+     "content": "Service Level Agreement"
+    },
+    {
+     "type": "paragraph_title",
+     "bbox": [
+      0.114,
+      0.125,
+      0.215,
+      0.146
+     ],
+     "level": 2,
+     "content": "1. Scope"
+    },
+    {
+     "type": "text",
+     "bbox": [
+      0.112,
+      0.16,
+      0.715,
+      0.198
+     ],
+     "content": "This agreement covers the cloud storage service provided to the customer. It applies to all regions listed in the price table below."
+    },
+    {
+     "type": "paragraph_title",
+     "bbox": [
+      0.114,
+      0.226,
+      0.268,
+      0.246
+     ],
+     "level": 2,
+     "content": "2. Price Table"
+    },
+    {
+     "type": "table",
+     "bbox": [
+      0.115,
+      0.266,
+      0.772,
+      0.388
+     ],
+     "content": "| Region | Storage per GB | Egress per GB |\n| --- | --- | --- |\n| us-east | 0.023 USD | 0.09 USD |\n| eu-west | 0.025 USD | 0.10 USD |\n| ap-north | 0.027 USD | 0.12 USD |",
+     "captions": [
+      {
+       "bbox": [
+        0.114,
+        0.405,
+        0.389,
+        0.425
+       ],
+       "content": "Table 1. Monthly prices by region."
+      }
+     ],
+     "footnotes": [],
+     "image_source": "images/page_0_table_4.jpg"
+    }
+   ]
+  },
+  {
+   "page_idx": 1,
+   "blocks": [
+    {
+     "type": "paragraph_title",
+     "bbox": [
+      0.114,
+      0.075,
+      0.277,
+      0.095
+     ],
+     "level": 2,
+     "content": "3. Termination"
+    },
+    {
+     "type": "text",
+     "bbox": [
+      0.113,
+      0.11,
+      0.672,
+      0.146
+     ],
+     "content": "Either party may terminate the agreement with 30 days written notice. Fees already paid are not refunded after termination."
+    },
+    {
+     "type": "paragraph_title",
+     "bbox": [
+      0.114,
+      0.176,
+      0.234,
+      0.197
+     ],
+     "level": 2,
+     "content": "4. Support"
+    },
+    {
+     "type": "text",
+     "bbox": [
+      0.114,
+      0.211,
+      0.39,
+      0.228
+     ],
+     "content": "\\- Email support on business days."
+    },
+    {
+     "type": "text",
+     "bbox": [
+      0.113,
+      0.23,
+      0.412,
+      0.247
+     ],
+     "content": "\\- Phone support for enterprise plans."
+    }
+   ]
+  }
+ ],
+ "metadata": {
+  "file_suffix": "pdf",
+  "producer": {
+   "name": "mineru",
+   "version": "4.1.7"
+  },
+  "document": {
+   "title": "Untitled",
+   "created_at": "2026-11-05T11:16:53-07:00",
+   "modified_at": "2026-11-05T11:16:53-07:00",
+   "creator_application": "UnknownApplication",
+   "producer_application": "GPL Ghostscript 10.02.1",
+   "page_count": 2,
+   "page_count_kind": "physical"
+  }
+ },
+ "extensions": {
+  "mineru": {
+   "tier": "basic",
+   "parse_mode": "txt"
+  },
+  "docvortex_layout": {
+   "version": 1,
+   "pages": [
+    {
+     "page_idx": 0,
+     "width_pt": 612.0,
+     "height_pt": 792.0
+    },
+    {
+     "page_idx": 1,
+     "width_pt": 612.0,
+     "height_pt": 792.0
+    }
+   ]
+  }
+ },
+ "is_full_document": true
+}

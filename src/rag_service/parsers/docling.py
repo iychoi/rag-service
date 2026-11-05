@@ -14,12 +14,14 @@ from typing import Any
 import httpx
 
 from rag_service.parsers.base import (
+    Block,
     ParsedDocument,
     ParserError,
     ParserHealth,
     ParserUnavailableError,
     split_pages,
 )
+from rag_service.parsers.tables import markdown_table
 
 PAGE_BREAK = "<!-- rag-service:page-break -->"
 
@@ -181,3 +183,116 @@ class DoclingParser:
                     )
                 return status
             await asyncio.sleep(self.poll_interval_s)
+
+
+# ---------- structure: DoclingDocument JSON → blocks ----------
+
+_SKIP_LABELS = {"page_header", "page_footer"}
+
+
+def structure_blocks(doc: dict[str, Any]) -> list[Block]:
+    """Blocks in reading order from a DoclingDocument (the `json_content` cached as raw.json).
+
+    Walks `body` depth first. Only the body content layer is used (page headers and footers live in
+    `furniture`). Tables become one block with their captions and footnotes; pictures contribute
+    their captions only. Returns [] if `doc` is not a DoclingDocument.
+    """
+    if doc.get("schema_name") != "DoclingDocument" or not isinstance(doc.get("body"), dict):
+        return []
+    blocks: list[Block] = []
+
+    def resolve(ref: Any) -> dict[str, Any] | None:
+        path = ref.get("$ref") if isinstance(ref, dict) else None
+        if not isinstance(path, str) or not path.startswith("#/"):
+            return None
+        node: Any = doc
+        for part in path[2:].split("/"):
+            if isinstance(node, list) and part.isdigit() and int(part) < len(node):
+                node = node[int(part)]
+            elif isinstance(node, dict) and part in node:
+                node = node[part]
+            else:
+                return None
+        return node if isinstance(node, dict) else None
+
+    def page(item: dict[str, Any]) -> int | None:
+        prov = item.get("prov") or []
+        return prov[0].get("page_no") if prov and isinstance(prov[0], dict) else None
+
+    def texts_of(refs: Any) -> list[str]:
+        items = (resolve(r) for r in refs or [])
+        return [t for i in items if i and (t := (i.get("text") or "").strip())]
+
+    def inline_text(item: dict[str, Any]) -> str:
+        if text := (item.get("text") or "").strip():
+            return text
+        children = (resolve(r) for r in item.get("children") or [])
+        return " ".join(t for c in children if c and (t := inline_text(c)))
+
+    def visit(item: dict[str, Any]) -> None:
+        if item.get("content_layer", "body") != "body":
+            return
+        ref = str(item.get("self_ref", ""))
+        label = item.get("label")
+        if ref.startswith("#/texts/"):
+            add_text(item)
+        elif ref.startswith("#/tables/"):
+            add_table(item)
+            return  # children are its captions/footnotes
+        elif ref.startswith("#/pictures/"):
+            if captions := texts_of(item.get("captions")):
+                blocks.append(Block("text", "\n".join(captions), page(item)))
+            return
+        elif ref.startswith("#/groups/") and label == "inline":
+            if text := inline_text(item):
+                blocks.append(Block("text", text, page(item) or first_page(item)))
+            return
+        for child_ref in item.get("children") or []:
+            if (child := resolve(child_ref)) is not None:
+                visit(child)
+
+    def first_page(item: dict[str, Any]) -> int | None:
+        for child in (resolve(r) for r in item.get("children") or []):
+            if child and (p := page(child) or first_page(child)):
+                return p
+        return None
+
+    def add_text(item: dict[str, Any]) -> None:
+        label = item.get("label")
+        text = (item.get("text") or "").strip()
+        if label in _SKIP_LABELS or not text:
+            return
+        if label == "title":
+            blocks.append(Block("heading", text, page(item), level=1))
+        elif label == "section_header":
+            level = min(int(item.get("level") or 1) + 1, 6)  # same as Docling's markdown: level 1 → ##
+            blocks.append(Block("heading", text, page(item), level=level))
+        elif label == "list_item":
+            marker = item.get("marker") or "-"
+            blocks.append(Block("text", f"{marker} {text}", page(item)))
+        elif label == "code":
+            blocks.append(Block("text", f"```\n{text}\n```", page(item)))
+        else:
+            blocks.append(Block("text", text, page(item)))
+
+    def add_table(item: dict[str, Any]) -> None:
+        caption = "\n".join(texts_of(item.get("captions")))
+        footnote = "\n".join(texts_of(item.get("footnotes")))
+        grid = (item.get("data") or {}).get("grid") or []
+        rows = [[str(c.get("text") or "") for c in row] for row in grid]
+        header_rows = 0
+        for row in grid:
+            if not any(c.get("column_header") for c in row):
+                break
+            header_rows += 1
+        parts = markdown_table(rows, header_rows)
+        if parts is None:
+            if caption or footnote:
+                blocks.append(Block("text", "\n\n".join(p for p in (caption, footnote) if p), page(item)))
+            return
+        blocks.append(
+            Block("table", parts.render(), page(item), caption=caption, footnote=footnote, table=parts)
+        )
+
+    visit(doc["body"])
+    return blocks

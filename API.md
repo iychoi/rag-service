@@ -280,7 +280,7 @@ Request body:
 | `external_ref` | string | no | `null` | Unique identifier from an external system. |
 | `description` | string | no | `null` | |
 | `chunk_size` | integer | no | `512` | 64–8192 tokens. Must fit the embedding model's input limit, otherwise indexing jobs fail. |
-| `chunk_overlap` | integer | no | `64` | 0–2048 tokens, and less than `chunk_size`. |
+| `chunk_overlap` | integer | no | `64` | 0–2048 tokens, and less than `chunk_size`. Used when text has to be split by sentence; see [How documents are chunked](#how-documents-are-chunked). |
 | `metadata` | object | no | `{}` | See [Metadata](#metadata). |
 
 ```bash
@@ -663,6 +663,17 @@ Indexing runs in the background: parse → chunk → embed → store. The reques
 Re-indexing an indexed document replaces its chunks without a gap: new chunks are written first, then the old ones are removed. If the new job fails or is canceled, the old chunks stay.
 
 Parse results are cached per parser and options. Re-indexing with the same parser and options skips parsing unless `force_reparse` is `true`.
+
+#### How documents are chunked
+
+With `docling` and `mineru`, chunks follow the document structure the parser reports: headings, paragraphs, list items, and tables in reading order, each with its page.
+
+- A heading starts a new chunk, and the heading path becomes the chunk's `section_path`. A heading with no text before the next heading (such as a document title) is kept at the top of the next chunk.
+- Paragraphs under one heading are packed into a chunk up to `chunk_size` tokens. They are never cut in the middle; `chunk_overlap` applies only when a single paragraph is longer than `chunk_size` and has to be split by sentence.
+- A table is a chunk of its own, with its caption and footnotes. A table longer than `chunk_size` is split between rows, and each piece repeats the header row and the caption.
+- `page` is the page where the chunk starts. Page headers, footers, and page numbers are left out.
+
+Plain-text and Markdown files (`passthrough`), and parse results without structure, are chunked from the markdown instead: split at headings, then by sentence with `chunk_overlap`, with pages estimated from each chunk's position.
 
 #### Index a document
 

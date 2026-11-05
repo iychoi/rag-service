@@ -1,0 +1,947 @@
+{
+ "schema_name": "DoclingDocument",
+ "version": "1.10.0",
+ "name": "doc",
+ "origin": {
+  "mimetype": "application/pdf",
+  "binary_hash": 15485071380715133393,
+  "filename": "doc.pdf",
+  "uri": null
+ },
+ "furniture": {
+  "self_ref": "#/furniture",
+  "parent": null,
+  "children": [],
+  "content_layer": "furniture",
+  "meta": null,
+  "name": "_root_",
+  "label": "unspecified"
+ },
+ "body": {
+  "self_ref": "#/body",
+  "parent": null,
+  "children": [
+   {
+    "$ref": "#/texts/0"
+   },
+   {
+    "$ref": "#/texts/1"
+   },
+   {
+    "$ref": "#/texts/2"
+   },
+   {
+    "$ref": "#/texts/3"
+   },
+   {
+    "$ref": "#/tables/0"
+   },
+   {
+    "$ref": "#/texts/5"
+   },
+   {
+    "$ref": "#/texts/6"
+   },
+   {
+    "$ref": "#/texts/7"
+   },
+   {
+    "$ref": "#/groups/0"
+   }
+  ],
+  "content_layer": "body",
+  "meta": null,
+  "name": "_root_",
+  "label": "unspecified"
+ },
+ "groups": [
+  {
+   "self_ref": "#/groups/0",
+   "parent": {
+    "$ref": "#/body"
+   },
+   "children": [
+    {
+     "$ref": "#/texts/8"
+    },
+    {
+     "$ref": "#/texts/9"
+    }
+   ],
+   "content_layer": "body",
+   "meta": null,
+   "name": "list",
+   "label": "list"
+  }
+ ],
+ "texts": [
+  {
+   "self_ref": "#/texts/0",
+   "parent": {
+    "$ref": "#/body"
+   },
+   "children": [],
+   "content_layer": "body",
+   "meta": null,
+   "label": "section_header",
+   "prov": [
+    {
+     "page_no": 1,
+     "bbox": {
+      "l": 72.0,
+      "t": 732.924,
+      "r": 286.092,
+      "b": 716.274,
+      "coord_origin": "BOTTOMLEFT"
+     },
+     "charspan": [
+      0,
+      23
+     ]
+    }
+   ],
+   "orig": "Service Level Agreement",
+   "text": "Service Level Agreement",
+   "formatting": null,
+   "hyperlink": null,
+   "level": 1
+  },
+  {
+   "self_ref": "#/texts/1",
+   "parent": {
+    "$ref": "#/body"
+   },
+   "children": [],
+   "content_layer": "body",
+   "meta": null,
+   "label": "section_header",
+   "prov": [
+    {
+     "page_no": 1,
+     "bbox": {
+      "l": 72.0,
+      "t": 690.052,
+      "r": 129.58200000000002,
+      "b": 677.102,
+      "coord_origin": "BOTTOMLEFT"
+     },
+     "charspan": [
+      0,
+      8
+     ]
+    }
+   ],
+   "orig": "1. Scope",
+   "text": "1. Scope",
+   "formatting": null,
+   "hyperlink": null,
+   "level": 1
+  },
+  {
+   "self_ref": "#/texts/2",
+   "parent": {
+    "$ref": "#/body"
+   },
+   "children": [],
+   "content_layer": "body",
+   "meta": null,
+   "label": "text",
+   "prov": [
+    {
+     "page_no": 1,
+     "bbox": {
+      "l": 72.0,
+      "t": 662.898,
+      "r": 436.3749999999999,
+      "b": 637.723,
+      "coord_origin": "BOTTOMLEFT"
+     },
+     "charspan": [
+      0,
+      132
+     ]
+    }
+   ],
+   "orig": "This agreement covers the cloud storage service provided to the customer. It applies to all regions listed in the price table below.",
+   "text": "This agreement covers the cloud storage service provided to the customer. It applies to all regions listed in the price table below.",
+   "formatting": null,
+   "hyperlink": null
+  },
+  {
+   "self_ref": "#/texts/3",
+   "parent": {
+    "$ref": "#/body"
+   },
+   "children": [],
+   "content_layer": "body",
+   "meta": null,
+   "label": "section_header",
+   "prov": [
+    {
+     "page_no": 1,
+     "bbox": {
+      "l": 72.0,
+      "t": 610.052,
+      "r": 162.272,
+      "b": 597.102,
+      "coord_origin": "BOTTOMLEFT"
+     },
+     "charspan": [
+      0,
+      14
+     ]
+    }
+   ],
+   "orig": "2. Price Table",
+   "text": "2. Price Table",
+   "formatting": null,
+   "hyperlink": null,
+   "level": 1
+  },
+  {
+   "self_ref": "#/texts/4",
+   "parent": {
+    "$ref": "#/tables/0"
+   },
+   "children": [],
+   "content_layer": "body",
+   "meta": null,
+   "label": "caption",
+   "prov": [
+    {
+     "page_no": 1,
+     "bbox": {
+      "l": 72.0,
+      "t": 467.898,
+      "r": 237.06600000000017,
+      "b": 457.723,
+      "coord_origin": "BOTTOMLEFT"
+     },
+     "charspan": [
+      0,
+      34
+     ]
+    }
+   ],
+   "orig": "Table 1. Monthly prices by region.",
+   "text": "Table 1. Monthly prices by region.",
+   "formatting": null,
+   "hyperlink": null
+  },
+  {
+   "self_ref": "#/texts/5",
+   "parent": {
+    "$ref": "#/body"
+   },
+   "children": [],
+   "content_layer": "body",
+   "meta": null,
+   "label": "section_header",
+   "prov": [
+    {
+     "page_no": 2,
+     "bbox": {
+      "l": 72.0,
+      "t": 730.052,
+      "r": 167.69,
+      "b": 717.102,
+      "coord_origin": "BOTTOMLEFT"
+     },
+     "charspan": [
+      0,
+      14
+     ]
+    }
+   ],
+   "orig": "3. Termination",
+   "text": "3. Termination",
+   "formatting": null,
+   "hyperlink": null,
+   "level": 1
+  },
+  {
+   "self_ref": "#/texts/6",
+   "parent": {
+    "$ref": "#/body"
+   },
+   "children": [],
+   "content_layer": "body",
+   "meta": null,
+   "label": "text",
+   "prov": [
+    {
+     "page_no": 2,
+     "bbox": {
+      "l": 72.0,
+      "t": 702.898,
+      "r": 410.0849999999999,
+      "b": 677.723,
+      "coord_origin": "BOTTOMLEFT"
+     },
+     "charspan": [
+      0,
+      123
+     ]
+    }
+   ],
+   "orig": "Either party may terminate the agreement with 30 days written notice. Fees already paid are not refunded after termination.",
+   "text": "Either party may terminate the agreement with 30 days written notice. Fees already paid are not refunded after termination.",
+   "formatting": null,
+   "hyperlink": null
+  },
+  {
+   "self_ref": "#/texts/7",
+   "parent": {
+    "$ref": "#/body"
+   },
+   "children": [],
+   "content_layer": "body",
+   "meta": null,
+   "label": "section_header",
+   "prov": [
+    {
+     "page_no": 2,
+     "bbox": {
+      "l": 72.0,
+      "t": 650.052,
+      "r": 141.23000000000002,
+      "b": 637.102,
+      "coord_origin": "BOTTOMLEFT"
+     },
+     "charspan": [
+      0,
+      10
+     ]
+    }
+   ],
+   "orig": "4. Support",
+   "text": "4. Support",
+   "formatting": null,
+   "hyperlink": null,
+   "level": 1
+  },
+  {
+   "self_ref": "#/texts/8",
+   "parent": {
+    "$ref": "#/groups/0"
+   },
+   "children": [],
+   "content_layer": "body",
+   "meta": null,
+   "label": "list_item",
+   "prov": [
+    {
+     "page_no": 2,
+     "bbox": {
+      "l": 72.0,
+      "t": 622.898,
+      "r": 237.06600000000012,
+      "b": 612.723,
+      "coord_origin": "BOTTOMLEFT"
+     },
+     "charspan": [
+      0,
+      33
+     ]
+    }
+   ],
+   "orig": "- Email support on business days.",
+   "text": "Email support on business days.",
+   "formatting": null,
+   "hyperlink": null,
+   "enumerated": false,
+   "marker": "-"
+  },
+  {
+   "self_ref": "#/texts/9",
+   "parent": {
+    "$ref": "#/groups/0"
+   },
+   "children": [],
+   "content_layer": "body",
+   "meta": null,
+   "label": "list_item",
+   "prov": [
+    {
+     "page_no": 2,
+     "bbox": {
+      "l": 72.0,
+      "t": 607.898,
+      "r": 250.53000000000017,
+      "b": 597.723,
+      "coord_origin": "BOTTOMLEFT"
+     },
+     "charspan": [
+      0,
+      37
+     ]
+    }
+   ],
+   "orig": "- Phone support for enterprise plans.",
+   "text": "Phone support for enterprise plans.",
+   "formatting": null,
+   "hyperlink": null,
+   "enumerated": false,
+   "marker": "-"
+  }
+ ],
+ "pictures": [],
+ "tables": [
+  {
+   "self_ref": "#/tables/0",
+   "parent": {
+    "$ref": "#/body"
+   },
+   "children": [
+    {
+     "$ref": "#/texts/4"
+    }
+   ],
+   "content_layer": "body",
+   "meta": null,
+   "label": "table",
+   "prov": [
+    {
+     "page_no": 1,
+     "bbox": {
+      "l": 71.0130844116211,
+      "t": 581.5049133300781,
+      "r": 472.67236328125,
+      "b": 483.5904846191406,
+      "coord_origin": "BOTTOMLEFT"
+     },
+     "charspan": [
+      0,
+      0
+     ]
+    }
+   ],
+   "captions": [
+    {
+     "$ref": "#/texts/4"
+    }
+   ],
+   "references": [],
+   "footnotes": [],
+   "image": null,
+   "data": {
+    "table_cells": [
+     {
+      "bbox": {
+       "l": 80.0,
+       "t": 220.10199999999998,
+       "r": 117.27900000000002,
+       "b": 230.27700000000004,
+       "coord_origin": "TOPLEFT"
+      },
+      "row_span": 1,
+      "col_span": 1,
+      "start_row_offset_idx": 0,
+      "end_row_offset_idx": 1,
+      "start_col_offset_idx": 0,
+      "end_col_offset_idx": 1,
+      "text": "Region",
+      "column_header": true,
+      "row_header": false,
+      "row_section": false,
+      "fillable": false
+     },
+     {
+      "bbox": {
+       "l": 240.00050000000002,
+       "t": 220.10199999999998,
+       "r": 320.68549999999993,
+       "b": 230.27700000000004,
+       "coord_origin": "TOPLEFT"
+      },
+      "row_span": 1,
+      "col_span": 1,
+      "start_row_offset_idx": 0,
+      "end_row_offset_idx": 1,
+      "start_col_offset_idx": 1,
+      "end_col_offset_idx": 2,
+      "text": "Storage per GB",
+      "column_header": true,
+      "row_header": false,
+      "row_section": false,
+      "fillable": false
+     },
+     {
+      "bbox": {
+       "l": 360.00048999999996,
+       "t": 220.10199999999998,
+       "r": 436.4174899999999,
+       "b": 230.27700000000004,
+       "coord_origin": "TOPLEFT"
+      },
+      "row_span": 1,
+      "col_span": 1,
+      "start_row_offset_idx": 0,
+      "end_row_offset_idx": 1,
+      "start_col_offset_idx": 2,
+      "end_col_offset_idx": 3,
+      "text": "Egress per GB",
+      "column_header": true,
+      "row_header": false,
+      "row_section": false,
+      "fillable": false
+     },
+     {
+      "bbox": {
+       "l": 80.0,
+       "t": 244.10199999999998,
+       "r": 116.069,
+       "b": 254.27700000000004,
+       "coord_origin": "TOPLEFT"
+      },
+      "row_span": 1,
+      "col_span": 1,
+      "start_row_offset_idx": 1,
+      "end_row_offset_idx": 2,
+      "start_col_offset_idx": 0,
+      "end_col_offset_idx": 1,
+      "text": "us-east",
+      "column_header": false,
+      "row_header": false,
+      "row_section": false,
+      "fillable": false
+     },
+     {
+      "bbox": {
+       "l": 240.0005,
+       "t": 244.10199999999998,
+       "r": 293.8015,
+       "b": 254.27700000000004,
+       "coord_origin": "TOPLEFT"
+      },
+      "row_span": 1,
+      "col_span": 1,
+      "start_row_offset_idx": 1,
+      "end_row_offset_idx": 2,
+      "start_col_offset_idx": 1,
+      "end_col_offset_idx": 2,
+      "text": "0.023 USD",
+      "column_header": false,
+      "row_header": false,
+      "row_section": false,
+      "fillable": false
+     },
+     {
+      "bbox": {
+       "l": 360.00048999999996,
+       "t": 244.10199999999998,
+       "r": 407.6854899999999,
+       "b": 254.27700000000004,
+       "coord_origin": "TOPLEFT"
+      },
+      "row_span": 1,
+      "col_span": 1,
+      "start_row_offset_idx": 1,
+      "end_row_offset_idx": 2,
+      "start_col_offset_idx": 2,
+      "end_col_offset_idx": 3,
+      "text": "0.09 USD",
+      "column_header": false,
+      "row_header": false,
+      "row_section": false,
+      "fillable": false
+     },
+     {
+      "bbox": {
+       "l": 80.0,
+       "t": 268.102,
+       "r": 118.511,
+       "b": 278.27700000000004,
+       "coord_origin": "TOPLEFT"
+      },
+      "row_span": 1,
+      "col_span": 1,
+      "start_row_offset_idx": 2,
+      "end_row_offset_idx": 3,
+      "start_col_offset_idx": 0,
+      "end_col_offset_idx": 1,
+      "text": "eu-west",
+      "column_header": false,
+      "row_header": false,
+      "row_section": false,
+      "fillable": false
+     },
+     {
+      "bbox": {
+       "l": 240.0005,
+       "t": 268.102,
+       "r": 293.8015,
+       "b": 278.27700000000004,
+       "coord_origin": "TOPLEFT"
+      },
+      "row_span": 1,
+      "col_span": 1,
+      "start_row_offset_idx": 2,
+      "end_row_offset_idx": 3,
+      "start_col_offset_idx": 1,
+      "end_col_offset_idx": 2,
+      "text": "0.025 USD",
+      "column_header": false,
+      "row_header": false,
+      "row_section": false,
+      "fillable": false
+     },
+     {
+      "bbox": {
+       "l": 360.00048999999996,
+       "t": 268.102,
+       "r": 407.6854899999999,
+       "b": 278.27700000000004,
+       "coord_origin": "TOPLEFT"
+      },
+      "row_span": 1,
+      "col_span": 1,
+      "start_row_offset_idx": 2,
+      "end_row_offset_idx": 3,
+      "start_col_offset_idx": 2,
+      "end_col_offset_idx": 3,
+      "text": "0.10 USD",
+      "column_header": false,
+      "row_header": false,
+      "row_section": false,
+      "fillable": false
+     },
+     {
+      "bbox": {
+       "l": 80.0,
+       "t": 292.102,
+       "r": 120.964,
+       "b": 302.277,
+       "coord_origin": "TOPLEFT"
+      },
+      "row_span": 1,
+      "col_span": 1,
+      "start_row_offset_idx": 3,
+      "end_row_offset_idx": 4,
+      "start_col_offset_idx": 0,
+      "end_col_offset_idx": 1,
+      "text": "ap-north",
+      "column_header": false,
+      "row_header": false,
+      "row_section": false,
+      "fillable": false
+     },
+     {
+      "bbox": {
+       "l": 240.0005,
+       "t": 292.102,
+       "r": 293.8015,
+       "b": 302.277,
+       "coord_origin": "TOPLEFT"
+      },
+      "row_span": 1,
+      "col_span": 1,
+      "start_row_offset_idx": 3,
+      "end_row_offset_idx": 4,
+      "start_col_offset_idx": 1,
+      "end_col_offset_idx": 2,
+      "text": "0.027 USD",
+      "column_header": false,
+      "row_header": false,
+      "row_section": false,
+      "fillable": false
+     },
+     {
+      "bbox": {
+       "l": 360.00048999999996,
+       "t": 292.102,
+       "r": 407.6854899999999,
+       "b": 302.277,
+       "coord_origin": "TOPLEFT"
+      },
+      "row_span": 1,
+      "col_span": 1,
+      "start_row_offset_idx": 3,
+      "end_row_offset_idx": 4,
+      "start_col_offset_idx": 2,
+      "end_col_offset_idx": 3,
+      "text": "0.12 USD",
+      "column_header": false,
+      "row_header": false,
+      "row_section": false,
+      "fillable": false
+     }
+    ],
+    "num_rows": 4,
+    "num_cols": 3,
+    "orientation": "rot_0",
+    "grid": [
+     [
+      {
+       "bbox": {
+        "l": 80.0,
+        "t": 220.10199999999998,
+        "r": 117.27900000000002,
+        "b": 230.27700000000004,
+        "coord_origin": "TOPLEFT"
+       },
+       "row_span": 1,
+       "col_span": 1,
+       "start_row_offset_idx": 0,
+       "end_row_offset_idx": 1,
+       "start_col_offset_idx": 0,
+       "end_col_offset_idx": 1,
+       "text": "Region",
+       "column_header": true,
+       "row_header": false,
+       "row_section": false,
+       "fillable": false
+      },
+      {
+       "bbox": {
+        "l": 240.00050000000002,
+        "t": 220.10199999999998,
+        "r": 320.68549999999993,
+        "b": 230.27700000000004,
+        "coord_origin": "TOPLEFT"
+       },
+       "row_span": 1,
+       "col_span": 1,
+       "start_row_offset_idx": 0,
+       "end_row_offset_idx": 1,
+       "start_col_offset_idx": 1,
+       "end_col_offset_idx": 2,
+       "text": "Storage per GB",
+       "column_header": true,
+       "row_header": false,
+       "row_section": false,
+       "fillable": false
+      },
+      {
+       "bbox": {
+        "l": 360.00048999999996,
+        "t": 220.10199999999998,
+        "r": 436.4174899999999,
+        "b": 230.27700000000004,
+        "coord_origin": "TOPLEFT"
+       },
+       "row_span": 1,
+       "col_span": 1,
+       "start_row_offset_idx": 0,
+       "end_row_offset_idx": 1,
+       "start_col_offset_idx": 2,
+       "end_col_offset_idx": 3,
+       "text": "Egress per GB",
+       "column_header": true,
+       "row_header": false,
+       "row_section": false,
+       "fillable": false
+      }
+     ],
+     [
+      {
+       "bbox": {
+        "l": 80.0,
+        "t": 244.10199999999998,
+        "r": 116.069,
+        "b": 254.27700000000004,
+        "coord_origin": "TOPLEFT"
+       },
+       "row_span": 1,
+       "col_span": 1,
+       "start_row_offset_idx": 1,
+       "end_row_offset_idx": 2,
+       "start_col_offset_idx": 0,
+       "end_col_offset_idx": 1,
+       "text": "us-east",
+       "column_header": false,
+       "row_header": false,
+       "row_section": false,
+       "fillable": false
+      },
+      {
+       "bbox": {
+        "l": 240.0005,
+        "t": 244.10199999999998,
+        "r": 293.8015,
+        "b": 254.27700000000004,
+        "coord_origin": "TOPLEFT"
+       },
+       "row_span": 1,
+       "col_span": 1,
+       "start_row_offset_idx": 1,
+       "end_row_offset_idx": 2,
+       "start_col_offset_idx": 1,
+       "end_col_offset_idx": 2,
+       "text": "0.023 USD",
+       "column_header": false,
+       "row_header": false,
+       "row_section": false,
+       "fillable": false
+      },
+      {
+       "bbox": {
+        "l": 360.00048999999996,
+        "t": 244.10199999999998,
+        "r": 407.6854899999999,
+        "b": 254.27700000000004,
+        "coord_origin": "TOPLEFT"
+       },
+       "row_span": 1,
+       "col_span": 1,
+       "start_row_offset_idx": 1,
+       "end_row_offset_idx": 2,
+       "start_col_offset_idx": 2,
+       "end_col_offset_idx": 3,
+       "text": "0.09 USD",
+       "column_header": false,
+       "row_header": false,
+       "row_section": false,
+       "fillable": false
+      }
+     ],
+     [
+      {
+       "bbox": {
+        "l": 80.0,
+        "t": 268.102,
+        "r": 118.511,
+        "b": 278.27700000000004,
+        "coord_origin": "TOPLEFT"
+       },
+       "row_span": 1,
+       "col_span": 1,
+       "start_row_offset_idx": 2,
+       "end_row_offset_idx": 3,
+       "start_col_offset_idx": 0,
+       "end_col_offset_idx": 1,
+       "text": "eu-west",
+       "column_header": false,
+       "row_header": false,
+       "row_section": false,
+       "fillable": false
+      },
+      {
+       "bbox": {
+        "l": 240.0005,
+        "t": 268.102,
+        "r": 293.8015,
+        "b": 278.27700000000004,
+        "coord_origin": "TOPLEFT"
+       },
+       "row_span": 1,
+       "col_span": 1,
+       "start_row_offset_idx": 2,
+       "end_row_offset_idx": 3,
+       "start_col_offset_idx": 1,
+       "end_col_offset_idx": 2,
+       "text": "0.025 USD",
+       "column_header": false,
+       "row_header": false,
+       "row_section": false,
+       "fillable": false
+      },
+      {
+       "bbox": {
+        "l": 360.00048999999996,
+        "t": 268.102,
+        "r": 407.6854899999999,
+        "b": 278.27700000000004,
+        "coord_origin": "TOPLEFT"
+       },
+       "row_span": 1,
+       "col_span": 1,
+       "start_row_offset_idx": 2,
+       "end_row_offset_idx": 3,
+       "start_col_offset_idx": 2,
+       "end_col_offset_idx": 3,
+       "text": "0.10 USD",
+       "column_header": false,
+       "row_header": false,
+       "row_section": false,
+       "fillable": false
+      }
+     ],
+     [
+      {
+       "bbox": {
+        "l": 80.0,
+        "t": 292.102,
+        "r": 120.964,
+        "b": 302.277,
+        "coord_origin": "TOPLEFT"
+       },
+       "row_span": 1,
+       "col_span": 1,
+       "start_row_offset_idx": 3,
+       "end_row_offset_idx": 4,
+       "start_col_offset_idx": 0,
+       "end_col_offset_idx": 1,
+       "text": "ap-north",
+       "column_header": false,
+       "row_header": false,
+       "row_section": false,
+       "fillable": false
+      },
+      {
+       "bbox": {
+        "l": 240.0005,
+        "t": 292.102,
+        "r": 293.8015,
+        "b": 302.277,
+        "coord_origin": "TOPLEFT"
+       },
+       "row_span": 1,
+       "col_span": 1,
+       "start_row_offset_idx": 3,
+       "end_row_offset_idx": 4,
+       "start_col_offset_idx": 1,
+       "end_col_offset_idx": 2,
+       "text": "0.027 USD",
+       "column_header": false,
+       "row_header": false,
+       "row_section": false,
+       "fillable": false
+      },
+      {
+       "bbox": {
+        "l": 360.00048999999996,
+        "t": 292.102,
+        "r": 407.6854899999999,
+        "b": 302.277,
+        "coord_origin": "TOPLEFT"
+       },
+       "row_span": 1,
+       "col_span": 1,
+       "start_row_offset_idx": 3,
+       "end_row_offset_idx": 4,
+       "start_col_offset_idx": 2,
+       "end_col_offset_idx": 3,
+       "text": "0.12 USD",
+       "column_header": false,
+       "row_header": false,
+       "row_section": false,
+       "fillable": false
+      }
+     ]
+    ]
+   },
+   "annotations": []
+  }
+ ],
+ "key_value_items": [],
+ "form_items": [],
+ "pages": {
+  "1": {
+   "size": {
+    "width": 612.0,
+    "height": 792.0
+   },
+   "image": null,
+   "page_no": 1
+  },
+  "2": {
+   "size": {
+    "width": 612.0,
+    "height": 792.0
+   },
+   "image": null,
+   "page_no": 2
+  }
+ }
+}

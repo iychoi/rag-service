@@ -311,6 +311,47 @@ async def test_docling_pdf_indexing_with_pages(client: httpx.AsyncClient, datase
     assert convert.call_count == 0
 
 
+async def test_docling_structure_chunking(client: httpx.AsyncClient, dataset: dict) -> None:
+    """Chunks follow the DoclingDocument structure (recorded from the real parser on table.pdf),
+    also when re-indexing from the parse cache."""
+    ds_id = dataset["id"]
+    md = (FIXTURES / "table_docling.md").read_text()
+    structured = json.loads((FIXTURES / "table_docling.json").read_text())
+
+    def routes(router: respx.MockRouter) -> None:
+        docling_routes(router)
+        result = json.loads((FIXTURES / "docling_result.json").read_text())
+        result["document"].update(md_content=md, json_content=structured)
+        router.get(f"{DOCLING_TEST_URL}/v1/result/t1").respond(json=result)
+
+    with respx.mock(assert_all_called=False) as router:
+        routes(router)
+        r = await upload(client, ds_id, "table.pdf", (FIXTURES / "table.pdf").read_bytes(), index="true")
+        assert r.status_code == 201, r.text
+        doc_id = r.json()["document"]["id"]
+        job = await wait_for_job(client, ds_id, r.json()["job"]["id"])
+    assert job["status"] == "succeeded", job
+
+    async def table_hit() -> dict:
+        r = await client.post(f"/datasets/{ds_id}/search", json={"query": "egress price per region", "top_k": 4})
+        return next(h for h in r.json()["results"] if "| ap-north |" in h["text"])
+
+    hit = await table_hit()
+    assert hit["page"] == 1 and hit["section_path"] == ["2. Price Table"]
+    assert "Table 1. Monthly prices by region." in hit["text"] and "| us-east |" in hit["text"]
+    assert (await client.get(f"/datasets/{ds_id}/documents/{doc_id}")).json()["num_chunks"] == 4
+
+    # Re-index from the parse cache: the structure is read back from raw.json
+    with respx.mock(assert_all_called=False) as router:
+        routes(router)
+        r = await client.post(f"/datasets/{ds_id}/documents/{doc_id}/index", json={"parser": "docling"})
+        job = await wait_for_job(client, ds_id, r.json()["id"])
+        assert router.routes[2].call_count == 0  # POST /v1/convert/file/async
+    assert job["status"] == "succeeded", job
+    assert (await client.get(f"/datasets/{ds_id}/documents/{doc_id}")).json()["num_chunks"] == 4
+    assert (await table_hit())["section_path"] == ["2. Price Table"]
+
+
 async def test_cancel_running_job(client: httpx.AsyncClient, dataset: dict) -> None:
     ds_id = dataset["id"]
     with respx.mock(assert_all_called=False) as router:

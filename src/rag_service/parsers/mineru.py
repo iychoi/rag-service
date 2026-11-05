@@ -19,6 +19,7 @@ import contextlib
 import hashlib
 import io
 import json
+import re
 import time
 import zipfile
 from pathlib import Path
@@ -27,12 +28,14 @@ from typing import Any
 import httpx
 
 from rag_service.parsers.base import (
+    Block,
     PageSpan,
     ParsedDocument,
     ParserError,
     ParserHealth,
     ParserUnavailableError,
 )
+from rag_service.parsers.tables import table_parts
 
 TIERS = ("flash", "basic", "standard", "advanced")
 OCR_MODES = ("auto", "txt", "ocr")
@@ -254,3 +257,58 @@ def _read_archive(archive: bytes) -> tuple[str, dict[str, Any] | None]:
             return markdown, structured
     except zipfile.BadZipFile as e:
         raise ParserError("mineru result is not a valid zip archive") from e
+
+
+# ---------- structure: structured_content.json → blocks ----------
+
+# Repeated page furniture; markdown.md leaves these out too
+_SKIP_TYPES = {"header", "footer", "page_number", "aside_text"}
+_VISUAL_TYPES = {"table", "image", "chart", "code"}
+_IMAGE_LINK = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+
+
+def structure_blocks(structured: dict[str, Any]) -> list[Block]:
+    """Blocks in reading order from MinerU's structured_content.json (cached as raw.json).
+
+    Each page lists typed blocks whose `content` is already markdown. Titles become headings at
+    their `level`; tables keep their captions and footnotes; image, chart and code blocks keep
+    their text and captions without image links. Returns [] if the shape is not recognized.
+    """
+    pages = structured.get("pages")
+    if not isinstance(pages, list):
+        return []
+    blocks: list[Block] = []
+    for i, page in enumerate(pages):
+        if not isinstance(page, dict):
+            continue
+        page_no = int(page.get("page_idx", i)) + 1
+        for b in page.get("blocks") or []:
+            if not isinstance(b, dict) or b.get("type") in _SKIP_TYPES:
+                continue
+            kind = b.get("type")
+            content = b.get("content") if isinstance(b.get("content"), str) else ""
+            if kind in ("doc_title", "paragraph_title"):
+                if text := content.strip():
+                    level = b.get("level") or (1 if kind == "doc_title" else 2)
+                    blocks.append(Block("heading", text, page_no, level=min(max(int(level), 1), 6)))
+            elif kind in _VISUAL_TYPES:
+                blocks.extend(_visual_block(b, content, page_no))
+            elif text := content.strip():
+                blocks.append(Block("text", text, page_no))
+    return blocks
+
+
+def _visual_block(b: dict[str, Any], content: str, page_no: int) -> list[Block]:
+    def annotations(key: str) -> str:
+        items = b.get(key) or []
+        return "\n".join(
+            t for a in items if isinstance(a, dict) and (t := str(a.get("content") or "").strip())
+        )
+
+    caption, footnote = annotations("captions"), annotations("footnotes")
+    body = _IMAGE_LINK.sub("", content).strip()
+    if b.get("type") == "table" and body:
+        parts = table_parts(body)
+        return [Block("table", body, page_no, caption=caption, footnote=footnote, table=parts)]
+    text = "\n\n".join(p for p in (caption, body, footnote) if p)
+    return [Block("text", text, page_no)] if text else []

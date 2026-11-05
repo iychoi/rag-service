@@ -1,7 +1,8 @@
 """Common parser interface."""
 
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -35,6 +36,47 @@ class ParsedDocument(BaseModel):
             if offset < span.end:
                 return span.page
         return self.pages[-1].page
+
+
+@dataclass
+class TableParts:
+    """A table split into rows, so an oversized table can be cut between rows.
+
+    `head` (header row and markdown separator, or an HTML header row) is repeated in every piece.
+    """
+
+    head: list[str]
+    rows: list[str]
+    open: str = ""  # e.g. "<table>" for HTML tables
+    close: str = ""
+    sep: str = "\n"
+
+    def render(self, rows: list[str] | None = None) -> str:
+        body = self.rows if rows is None else rows
+        return self.open + self.sep.join([*self.head, *body]) + self.close
+
+
+@dataclass
+class Block:
+    """One item of a document in reading order, taken from a parser's structured output.
+
+    `text` is markdown. Headings carry their `level` (1 = top). Tables keep their caption and
+    footnotes separately so every piece of a split table can repeat them.
+    """
+
+    kind: Literal["heading", "text", "table"]
+    text: str
+    page: int | None = None
+    level: int = 1
+    caption: str = ""
+    footnote: str = ""
+    table: TableParts | None = field(default=None, repr=False)
+
+    def full_text(self, table_text: str | None = None) -> str:
+        if self.kind != "table":
+            return self.text
+        body = self.text if table_text is None else table_text
+        return "\n\n".join(p for p in (self.caption, body, self.footnote) if p)
 
 
 class ParserHealth(BaseModel):

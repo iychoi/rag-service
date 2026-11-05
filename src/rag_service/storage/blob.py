@@ -101,11 +101,15 @@ class BlobStore:
             return None
         pages_file = d / "pages.json"
         meta_file = d / "meta.json"
+        raw_file = d / "raw.json"
         pages = None
         if pages_file.exists():
             pages = [PageSpan.model_validate(p) for p in json.loads(pages_file.read_text())]
         meta = json.loads(meta_file.read_text()) if meta_file.exists() else {}
-        return ParsedDocument(markdown=md.read_text(encoding="utf-8"), pages=pages, metadata=meta)
+        raw = json.loads(raw_file.read_text()) if raw_file.exists() else None  # structure for chunking
+        return ParsedDocument(
+            markdown=md.read_text(encoding="utf-8"), pages=pages, raw=raw, metadata=meta
+        )
 
     def save_parsed(
         self, dataset_id: str, document_id: str, cache_key: str, parsed: ParsedDocument

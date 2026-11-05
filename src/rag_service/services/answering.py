@@ -8,11 +8,11 @@ from typing import NoReturn
 
 import httpx
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
-from llama_index.core.utils import get_tokenizer
 
 from rag_service.models.schemas import QuerySource, SearchResult, TokenUsage
 from rag_service.providers.llms import build_llm
 from rag_service.providers.upstream import upstream_api_error
+from rag_service.services.tokens import count_tokens
 
 SYSTEM_PROMPT = """\
 You answer questions using only the numbered sources provided by the user.
@@ -28,14 +28,6 @@ _CITATION = re.compile(r"\[(\d{1,3})\]")
 
 def number_sources(results: list[SearchResult]) -> list[QuerySource]:
     return [QuerySource(id=i, **r.model_dump()) for i, r in enumerate(results, start=1)]
-
-
-def count_tokens(text: str) -> int:
-    """Token count with the tokenizer chunking uses (tiktoken, bundled with LlamaIndex).
-
-    Claude's tokenizer differs, so this is an estimate of what the LLM bills.
-    """
-    return len(get_tokenizer()(text))
 
 
 def select_sources(
