@@ -310,10 +310,13 @@ async def delete_document(
         )
     ).all()
     await state.runner.cancel_many(list(active))
-    # Order: vectors → metadata → files
-    await state.vectors.delete_document(ds, doc.id)
-    storage_path = doc.storage_path
+    # Order: record → vectors → files. A job can still start after the cancel above (an index
+    # request racing this delete). Deleting the record first means that job either finds the
+    # document gone when it stores and removes its own output, or stored before this point and
+    # its vectors are deleted below (see IndexingPipeline._ensure_document_exists).
+    doc_id, storage_path = doc.id, doc.storage_path
     await session.delete(doc)
     await session.commit()
-    state.blob.delete_document(ds.id, doc.id, storage_path)
+    await state.vectors.delete_document(ds, doc_id)
+    state.blob.delete_document(ds.id, doc_id, storage_path)
     return Response(status_code=204)

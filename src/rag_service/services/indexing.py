@@ -44,6 +44,10 @@ class JobFailedError(Exception):
     """Job failure reason that is shown to the user."""
 
 
+class DocumentDeletedError(Exception):
+    """The document was deleted while its job was running."""
+
+
 class IndexingPipeline:
     def __init__(
         self,
@@ -111,6 +115,10 @@ class IndexingPipeline:
 
             await self.vectors.add(ds, nodes)
             await self.vectors.delete_document_except_job(ds, doc.id, job_id)
+            await self._ensure_document_exists(doc.id)
+        except DocumentDeletedError:
+            await self._discard_output(job_id, ds, doc.id)
+            return
         except asyncio.CancelledError:
             if canceled_by_user():
                 await self._finish_unsuccessful(job_id, ds, doc.id, JobStatus.canceled, "canceled")
@@ -168,6 +176,7 @@ class IndexingPipeline:
             except ParserError as e:
                 raise JobFailedError(str(e)) from e
         await asyncio.to_thread(self.blob.save_parsed, ds.id, doc.id, cache_key, parsed)
+        await self._ensure_document_exists(doc.id)
         return parsed, parser.name, parsed.metadata.get("backend")
 
     async def _contextualize(
@@ -288,6 +297,32 @@ class IndexingPipeline:
             embedding=embedding,
             relationships={NodeRelationship.SOURCE: RelatedNodeInfo(node_id=doc.id)},
         )
+
+    async def _ensure_document_exists(self, document_id: str) -> None:
+        """Raise DocumentDeletedError if the document was deleted while this job ran.
+
+        Called right after the job writes something tied to the document (parse cache, vectors).
+        Document deletion removes the record before the vectors and files, so either this check
+        sees the record gone and the job removes its own output, or the record still existed and
+        the deletion, which runs later, removes that output.
+        """
+        async with self.db.sessionmaker() as s:
+            if await s.get(Document, document_id) is None:
+                raise DocumentDeletedError
+
+    async def _discard_output(self, job_id: str, ds: Dataset, document_id: str) -> None:
+        """Remove what a job wrote for a document that no longer exists. The job row went with
+        the document (FK cascade), so there is no status to update."""
+        log.info("document %s was deleted during job %s; discarding its output", document_id, job_id)
+
+        async def discard() -> None:
+            await self.vectors.delete_job_nodes(ds, document_id, job_id)
+            await asyncio.to_thread(self.blob.delete_parsed, ds.id, document_id)
+
+        try:
+            await asyncio.shield(discard())
+        except asyncio.CancelledError:
+            pass
 
     async def _finish_unsuccessful(
         self, job_id: str, ds: Dataset, document_id: str, status: JobStatus, error: str

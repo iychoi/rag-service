@@ -136,6 +136,9 @@ class BlobStore:
         self.resolve(storage_path).unlink(missing_ok=True)
         shutil.rmtree(self.parsed / dataset_id / document_id, ignore_errors=True)
 
+    def delete_parsed(self, dataset_id: str, document_id: str) -> None:
+        shutil.rmtree(self.parsed / dataset_id / document_id, ignore_errors=True)
+
     def delete_dataset(self, dataset_id: str) -> None:
         shutil.rmtree(self.originals / dataset_id, ignore_errors=True)
         shutil.rmtree(self.parsed / dataset_id, ignore_errors=True)

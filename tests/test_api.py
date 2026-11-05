@@ -352,6 +352,48 @@ async def test_docling_structure_chunking(client: httpx.AsyncClient, dataset: di
     assert (await table_hit())["section_path"] == ["2. Price Table"]
 
 
+async def test_job_outliving_its_document_leaves_nothing(
+    client: httpx.AsyncClient, dataset: dict, state: AppState
+) -> None:
+    """A job that keeps running after its document is deleted (e.g. an index request that arrived
+    after the delete canceled the document's jobs) must not leave vectors or parse cache behind."""
+    from rag_service.models.tables import Dataset, Document
+
+    ds_id = dataset["id"]
+    parse_done = False
+
+    def poll(request: httpx.Request) -> httpx.Response:
+        status = "success" if parse_done else "started"
+        return httpx.Response(200, json={"task_id": "t1", "task_type": "convert", "task_status": status})
+
+    with respx.mock(assert_all_called=False) as router:
+        docling_routes(router)
+        router.get(f"{DOCLING_TEST_URL}/v1/status/poll/t1").mock(side_effect=poll)
+        r = await upload(client, ds_id, "late.pdf", (FIXTURES / "sample.pdf").read_bytes(), index="true")
+        doc_id, job_id = r.json()["document"]["id"], r.json()["job"]["id"]
+        for _ in range(200):
+            if (await client.get(f"/datasets/{ds_id}/jobs/{job_id}")).json()["status"] == "running":
+                break
+            await asyncio.sleep(0.02)
+
+        # The rest of a document delete, without canceling the job
+        async with state.db.sessionmaker() as s:
+            ds = await s.get(Dataset, ds_id)
+            doc = await s.get(Document, doc_id)
+            assert ds is not None and doc is not None
+            storage_path = doc.storage_path
+            await s.delete(doc)
+            await s.commit()
+        await state.vectors.delete_document(ds, doc_id)
+        state.blob.delete_document(ds_id, doc_id, storage_path)
+
+        parse_done = True
+        await asyncio.wait_for(state.runner.wait_idle(), 30)
+
+    assert await state.vectors.count_document_nodes(ds, doc_id) == 0
+    assert not (state.blob.parsed / ds_id / doc_id).exists()
+
+
 async def test_cancel_running_job(client: httpx.AsyncClient, dataset: dict) -> None:
     ds_id = dataset["id"]
     with respx.mock(assert_all_called=False) as router:
