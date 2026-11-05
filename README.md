@@ -1,7 +1,7 @@
 # RAG Service
 
 A REST service that manages documents in datasets and provides parsing (Docling, MinerU) → chunking → embedding → pgvector storage → search.
-See [API.md](API.md) for the REST API reference, [openapi.yaml](openapi.yaml) for the OpenAPI (Swagger) spec, and [TODO.md](TODO.md) for remaining work.
+See [RAG.md](RAG.md) for how indexing, search, and answering work step by step, [API.md](API.md) for the REST API reference, [openapi.yaml](openapi.yaml) for the OpenAPI (Swagger) spec, and [TODO.md](TODO.md) for remaining work.
 
 ## Running
 
